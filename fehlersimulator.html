@@ -111,7 +111,7 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
     <div class="leftcol">
       <div class="panel">
         <h2>Schaltbild</h2>
-        <svg id="sch" viewBox="0 0 1470 560" role="img" aria-label="Schaltbild"></svg>
+        <svg id="sch" viewBox="0 0 1530 560" role="img" aria-label="Schaltbild"></svg>
       </div>
       <div class="panel lvpanel">
         <div class="lvsvg">
@@ -450,6 +450,10 @@ function compute(p) {
   v.U12 = v.U1.sub(v.U2);
   v.U23 = v.U2.sub(v.U3);
   v.U31 = v.U3.sub(v.U1);
+  // verkettete Spannungen an den HS-Klemmen des Trafos (rechts von Fehlerstelle/Unterbrechung)
+  v.UT12 = v.UT1.sub(v.UT2);
+  v.UT23 = v.UT2.sub(v.UT3);
+  v.UT31 = v.UT3.sub(v.UT1);
   v.UM = V.M;
   v.UN = V.N;
   v.IA = zA ? V.M.div(zA).scale(1000) : C0;   // kV/Ω = kA → A
@@ -556,6 +560,8 @@ function selfTest(log = console.log) {
   chk(2, 'UM', r.UM, P(95.26, 60));
   chk(2, 'UM (= −1,5·UG3)', r.UM, UG(3).scale(-1.5));
   chk(2, 'UT3 (= UM)', r.UT3, r.UM);
+  chk(2, 'UT12 (= U12, Klemmen L1–L2 ungestört)', r.UT12, r.U12);
+  chk(2, 'UT23 (= UW2, da UT3 = UM)', r.UT23, r.UW2);
   // Test 3: Doppelfehler Phase 3 netzseitig, Ableiter Z → 0
   p = clone(dbl); p.arr.mode = 'zero'; r = compute(p).v;
   chk(3, 'UM', r.UM, C0);
@@ -671,7 +677,8 @@ const $ = id => document.getElementById(id);
 /* Symbole: [Basis, Index] */
 const SYM = { U12: ['U', '12'], U23: ['U', '23'], U31: ['U', '31'], UM: ['U', 'M'], UN: ['U', 'N'], IA: ['I', 'A'], IP: ['I', 'P'], IF: ['I', 'F'],
   UNS12: ['U', 'NS12'], UNS23: ['U', 'NS23'], UNS31: ['U', 'NS31'],
-  UMS12: ['U', 'MS12'], UMS23: ['U', 'MS23'], UMS31: ['U', 'MS31'] };
+  UMS12: ['U', 'MS12'], UMS23: ['U', 'MS23'], UMS31: ['U', 'MS31'],
+  UT12: ['U', 'T12'], UT23: ['U', 'T23'], UT31: ['U', 'T31'] };
 for (let k = 1; k <= 3; k++) {
   SYM['UNS' + k] = ['U', 'NS' + k]; SYM['UMS' + k] = ['U', 'MS' + k];
   SYM['UG' + k] = ['U', 'G' + k]; SYM['U' + k] = ['U', String(k)];
@@ -734,14 +741,14 @@ function renderSchematic(res, chg) {
   // Bereiche und Überschriften
   s.push('<rect class="region" x="16" y="60" width="268" height="476" rx="10"/>',
     '<rect class="region" x="372" y="60" width="300" height="476" rx="10"/>',
-    '<rect class="region" x="772" y="60" width="684" height="476" rx="10"/>');
+    '<rect class="region" x="772" y="60" width="744" height="476" rx="10"/>');
   s.push(txt(150, 50, 'Netz', 'hd', 'middle'), p.ideal ? '' : txt(330, 50, 'Leitung', 'hd2', 'middle'),
-    txt(522, 50, 'Mast 1', 'hd', 'middle'), txt(1114, 50, 'Transformatoren', 'hd', 'middle'));
+    txt(522, 50, 'Mast 1', 'hd', 'middle'), txt(1144, 50, 'Transformatoren', 'hd', 'middle'));
 
   // Erdlinie
   let hatch = '';
-  for (let x = 40; x <= 1452; x += 14) hatch += `M${x} ${YE + 3}L${x - 8} ${YE + 13}`;
-  s.push(`<path class="w" style="stroke-width:3" d="M28 ${YE}H1456"/>`, `<path class="w" style="stroke-width:1.2" d="${hatch}"/>`,
+  for (let x = 40; x <= 1512; x += 14) hatch += `M${x} ${YE + 3}L${x - 8} ${YE + 13}`;
+  s.push(`<path class="w" style="stroke-width:3" d="M28 ${YE}H1516"/>`, `<path class="w" style="stroke-width:1.2" d="${hatch}"/>`,
     txt(30, YE + 32, 'Erde E', 'sm'));
 
   // Sternpunkt N und Sternpunkterdung
@@ -803,20 +810,27 @@ function renderSchematic(res, chg) {
       s.push(w(`M690 ${y}H730`), dot(690, y), dot(730, y));
     }
     // Trafoseite
-    s.push(w(`M730 ${y}H820`), dot(790, y), `<rect class="zb" x="820" y="${y - 10}" width="60" height="20"/>`, w(`M880 ${y}H960`));
-    s.push(txt(850, y + 25, svgS('Z', 'W' + k, ' = ' + fmtZq(p.ZW[k - 1])), 'sm', 'middle'));
-    s.push(sArrow(815, y - 20, 885, y - 20, 'UW' + k), vl('UW' + k, 850, y - 28, 'middle'));
+    s.push(w(`M730 ${y}H820`), `<rect class="zb" x="820" y="${y - 10}" width="60" height="20"/>`, w(`M880 ${y}H960`));
+    s.push(txt(822, y + 25, svgS('Z', 'W' + k, ' = ' + fmtZq(p.ZW[k - 1])), 'sm'));
+    s.push(sArrow(818, y - 20, 885, y - 20, 'UW' + k), vl('UW' + k, 822, y - 28));
     // MS-Wicklung (Yy0), MS-Leitung zum MS/NS-Transformator, NS-Abgang
     s.push(`<rect class="zb" x="1032" y="${y - 9}" width="44" height="18"/>`, w(`M1076 ${y}H1250`),
       vl('UMS' + k, 1084, y - 8));
-    s.push(w(`M1290 ${y}H1430`), txt(1440, y + 4, '…', '', 'middle'), vl('UNS' + k, 1298, y - 8));
+    s.push(w(`M1290 ${y}H1490`), txt(1500, y + 4, '…', '', 'middle'), vl('UNS' + k, 1298, y - 8));
     // Erdschluss
     if (p.ef && p.phase === k) s.push(bolt(p.loc === 'net' ? 660 : 755, y));
   }
-  // verkettete Spannungen (Pfeil von x nach y)
-  s.push(sArrow(410, 154, 410, 226, 'U12'), vl('U12', 418, 194));
-  s.push(sArrow(410, 234, 410, 306, 'U23'), vl('U23', 418, 274));
-  s.push(sArrow(392, 306, 392, 154, 'U31'), vl('U31', 384, 192, 'end'));
+  // verkettete Spannungen (Pfeil von Leiter x nach Leiter y), Beschriftung links der Pfeile:
+  //   HS an den Trafoklemmen rechts der Fehlerstelle, MS nach Yy0, NS nach Dyn5
+  const ll = (pre, x) => {
+    s.push(dot(x, 150), dot(x, 230), dot(x - 14, 150), dot(x - 14, 310), dot(x, 310));
+    s.push(sArrow(x, 154, x, 226, pre + '12'), vl(pre + '12', x - 20, 194, 'end'));
+    s.push(sArrow(x, 234, x, 306, pre + '23'), vl(pre + '23', x - 20, 274, 'end'));
+    s.push(sArrow(x - 14, 306, x - 14, 154, pre + '31'), vl(pre + '31', x - 20, 338, 'end'));
+  };
+  ll('UT', 806);
+  ll('UMS', 1238);
+  ll('UNS', 1482);
 
   // Sternverbindung, M, Ableiter, U_M
   s.push(w('M960 150V392'), dot(960, 350, true), txt(970, 345, 'M'));
@@ -828,13 +842,13 @@ function renderSchematic(res, chg) {
   // Kern HS/MS (Yy0), MS-Sternpunkt, MS/NS-Transformator (Dyn5), NS-Neutralleiter
   s.push(w('M1012 136V324M1018 136V324'),
     txt(1015, 92, 'HS/MS', 'sm', 'middle'), txt(1015, 108, 'Yy0', '', 'middle'));
-  s.push(w('M1032 150V310'), dot(1032, 310, true), txt(1036, 330, 'MS-Sternpunkt', 'sm'));
+  s.push(w('M1032 150V310'), dot(1032, 310, true), txt(1028, 360, 'MS-Sternpunkt', 'sm'));
   s.push(txt(1165, 108, `MS ${fmtNum(p.UMV, 1)} kV`, 'sm', 'middle'));
   s.push(`<rect class="zb" x="1250" y="132" width="40" height="196" rx="4"/>`,
     txt(1270, 225, 'D', '', 'middle'), txt(1270, 245, 'yn', '', 'middle'),
     txt(1270, 92, 'MS/NS', 'sm', 'middle'), txt(1270, 108, 'Dyn5', '', 'middle'));
-  s.push(txt(1365, 108, `NS ${fmtNum(p.ULV, 0)} V`, 'sm', 'middle'));
-  s.push(w('M1290 350H1430'), txt(1440, 354, 'N', '', 'middle'), txt(1300, 374, 'Nullsystem durch Δ gesperrt,', 'sm'), txt(1300, 390, 'NS eilt 150° nach', 'sm'));
+  s.push(txt(1395, 108, `NS ${fmtNum(p.ULV, 0)} V`, 'sm', 'middle'));
+  s.push(w('M1290 350H1490'), txt(1500, 354, 'N', '', 'middle'), txt(1300, 374, 'Nullsystem durch Δ gesperrt,', 'sm'), txt(1300, 390, 'NS eilt 150° nach', 'sm'));
   if (p.coup === 'core') {
     // Nullsystem-Pfad: Dreieckswicklung auf dem Kern mit Nullimpedanz Z_0W
     s.push(`<path class="w" style="stroke-width:1.2;stroke-dasharray:4 3" d="M1015 324V414H1214"/>`,
@@ -1071,7 +1085,7 @@ function drawPhasors(svg, items, refItems, cons, opt) {
 /* =====================================================================
    renderTable
    ===================================================================== */
-const ROWS = ['UG1', 'UG2', 'UG3', 'U1', 'U2', 'U3', 'U12', 'U23', 'U31', 'UW1', 'UW2', 'UW3', 'UM', 'UT1', 'UT2', 'UT3', 'UN', 'IP', 'IF', 'IA',
+const ROWS = ['UG1', 'UG2', 'UG3', 'U1', 'U2', 'U3', 'U12', 'U23', 'U31', 'UW1', 'UW2', 'UW3', 'UM', 'UT1', 'UT2', 'UT3', 'UT12', 'UT23', 'UT31', 'UN', 'IP', 'IF', 'IA',
   'UMS1', 'UMS2', 'UMS3', 'UMS12', 'UMS23', 'UMS31',
   'UNS1', 'UNS2', 'UNS3', 'UNS12', 'UNS23', 'UNS31'];
 function renderTable(res, ref, chg) {
