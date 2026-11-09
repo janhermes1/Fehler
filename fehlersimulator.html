@@ -549,10 +549,10 @@ const DEF = {
   scen: 'ok', phase: 3, loc: 'net', RF: 0, brk: false, ef: false,
   ideal: true,
   dC: [0, 0, 0],
-  coup: 'none', Z0W: { m: 30, a: 80 }, UMV: 20, ULV: 400,
+  coup: 'core', Z0W: { m: 30, a: 80 }, UMV: 20, ULV: 400,
   ana: 'tov',
   // TOV-Festigkeit T = U/U_r über der Zeit (typische Beispielwerte, durch Herstellerdaten ersetzen)
-  tov: { Ur: 96, Uc: 76, tS: 3, curve: 'np',
+  tov: { Ur: 96, Uc: 76, tS: 3, tZ: 600, curve: 'np',
     t: [0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000],
     np: [1.30, 1.25, 1.20, 1.16, 1.13, 1.10, 1.07, 1.05, 1.03, 1.01, 0.99],
     pd: [1.22, 1.17, 1.13, 1.10, 1.07, 1.045, 1.02, 1.00, 0.98, 0.96, 0.94] }
@@ -562,6 +562,18 @@ const DEF = {
 function tovPts(tov, which) {
   return tov.t.map((t, i) => ({ t, T: tov[which][i] }))
     .filter(q => q.t > 0 && q.T > 0).sort((a, b) => a.t - b.t);
+}
+/**
+ * Rückrechnung: Betriebsspannung U_b (verkettet), bei der der Ableiter nach tZ Sekunden zündet.
+ * Das Netz ist linear, U_M wächst proportional mit allen Quellspannungen.
+ */
+function tovOpVoltage(p, which, tZ) {
+  const q = clone(p); q.arr.mode = 'inf';
+  const UM = compute(q).v.UM.abs();
+  const Ub0 = p.UG[0].m * Math.sqrt(3);          // aktuelle Betriebsspannung aus U_G1
+  const T = tovAt(tovPts(p.tov, which), tZ);
+  if (T == null || UM < 1e-6) return { Ub: NaN, T, UM };
+  return { Ub: Ub0 * T * p.tov.Ur / UM, T, UM, Ub0 };
 }
 /** T(t) bei log-linearer Interpolation; außerhalb des Bereichs null */
 function tovAt(pts, t) {
@@ -621,6 +633,7 @@ function selfTest(log = console.log) {
   base.Z = [0, 1, 2].map(() => ({ m: 1e-6, a: 73 }));
   base.ZW = [0, 1, 2].map(() => ({ m: 300, a: 25 }));
   base.RF = 0;
+  base.coup = 'none';   // Referenztests der Musterlösung: Wicklungen ungekoppelt (wie Skizze)
   const TOL = 0.005, REF = 63.51, out = [];
   const UG = k => Complex.polar(63.51, [0, 120, 240][k - 1]);
   const P = (m, a) => Complex.polar(m, a);
@@ -673,7 +686,7 @@ function selfTest(log = console.log) {
   r = compute(p).v;
   chkAbs(4, 'UM (U_res = 50 kV)', r.UM.abs(), 50.0);
   // Test 5: vereinfachtes Modell mit Standard-Leitungswerten reproduziert Test 2
-  p = clone(DEF);
+  p = clone(DEF); p.coup = 'none';
   Object.assign(p, { scen: 'double', brk: true, ef: true, phase: 3, loc: 'net', ideal: true });
   r = compute(p).v;
   chk(5, 'U1 (vereinfacht, Z1–3 = 12,5 Ω)', r.U1, P(110, 30));
@@ -765,6 +778,17 @@ function selfTest(log = console.log) {
       txt: `Test 16: t*(T = 1,00) = ${fmtNum(t4.t, 0)} s (soll ≈ 5477 s, Kennlinie bis 10000 s)` });
     const ta = tovAt(np, Math.sqrt(3));
     out.push({ ok: Math.abs(ta - 1.18) < 1e-9, txt: `Test 16: T(√3 s) = ${fmtNum(ta, 4)} (soll 1,1800)` });
+  }
+  // Test 17: Betriebsspannung für Zündung nach 600 s (S.2, U_M = 1,5·U_b/√3, U_r = 96 kV)
+  {
+    p = clone(dbl); p.tov = clone(DEF.tov);
+    const r17 = tovOpVoltage(p, 'pd', 600);
+    const Texp = 1.00 - 0.02 * Math.log10(2) / Math.log10(10 / 3);
+    const Ub = Texp * 96 / 1.5 * Math.sqrt(3);
+    out.push({ ok: Math.abs(r17.Ub - Ub) < 1e-6 * Ub, txt: `Test 17: U_b(t* = 600 s, mit Vorbel.) = ${fmtNum(r17.Ub, 2)} kV (soll ${fmtNum(Ub, 2)} kV)` });
+    p.UG = p.UG.map(g => ({ m: g.m * r17.Ub / r17.Ub0, a: g.a }));
+    const t17 = tovTime(tovPts(p.tov, 'pd'), compute(Object.assign(clone(p), { arr: { ...p.arr, mode: 'inf' } })).v.UM.abs() / 96);
+    out.push({ ok: t17.kind === 'at' && Math.abs(t17.t - 600) < 0.01, txt: `Test 17: Gegenprobe t* bei ${fmtNum(r17.Ub, 2)} kV = ${fmtNum(t17.t, 2)} s (soll 600 s)` });
   }
   let pass = 0;
   for (const o of out) { log(`${o.ok ? 'PASS' : 'FAIL'}  ${o.txt}`); if (o.ok) pass++; }
@@ -1390,6 +1414,16 @@ function renderAnalysis() {
     txt += `<br>Nach der Zündung: ${htmlS('U', 'M')} = 0, ${htmlS('I', 'A')} = <b>${fmtPh(v.IA, 'A', 0, 0.5)}</b>, ` +
       `${htmlS('U', 'W1')} = <b>${fmtPh(v.UW1)}</b>, ${htmlS('U', 'W2')} = <b>${fmtPh(v.UW2)}</b>, ${htmlS('U', 'W3')} = <b>${fmtPh(v.UW3)}</b>.`;
   }
+  // Rückrechnung: Betriebsspannung für Zündung nach t_Z
+  if (tv.tZ > 0) {
+    const rr = k => tovOpVoltage(state, k, tv.tZ);
+    const a = rr(tv.curve), b = rr(tv.curve === 'np' ? 'pd' : 'np');
+    const f = r => Number.isFinite(r.Ub) ? `<b>${fmtNum(r.Ub, 1)} kV</b> (${htmlS('U', 'M')} = ${fmtNum(r.T * tv.Ur, 1)} kV, T = ${fmtNum(r.T, 3)})` : '— (t<sub>Z</sub> außerhalb der Kennlinie oder keine Spannung an M)';
+    txt += `<hr style="border:0;border-top:1px solid var(--line);margin:6px 0">Betriebsspannung, bei der der Ableiter nach <i>t</i><sub>Z</sub> = ${fmtT(tv.tZ)} s zündet ` +
+      `(aktueller Fehlerfall, alle Quellen proportional skaliert; derzeit ${fmtNum(state.UG[0].m * Math.sqrt(3), 1)} kV):<br>` +
+      `${name}: <i>U</i><sub>b</sub> = ${f(a)}<br>` +
+      `<span style="color:var(--muted)">${tv.curve === 'np' ? 'mit' : 'ohne'} Vorbelastung: <i>U</i><sub>b</sub> = ${f(b)}</span>`;
+  }
   $('tovRes').className = 'verdict ' + cls;
   $('tovRes').innerHTML = base + txt;
 }
@@ -1451,7 +1485,9 @@ function buildForm() {
     realRow('tov.Uc', '<i>U</i><sub>c</sub>', 'kV', 10, 150, 0.5, 'mag') +
     realRow('tov.tS', '<i>t</i><sub>S</sub>', 's', 0, 600, 0.5, 'mag') +
     `<div class="info"><i>U</i><sub>r</sub> Bemessungsspannung, <i>U</i><sub>c</sub> Dauerspannung,
-      <i>t</i><sub>S</sub> Abschaltzeit des Schutzes (Fehlerklärung).</div>`;
+      <i>t</i><sub>S</sub> Abschaltzeit des Schutzes (Fehlerklärung).</div>` +
+    realRow('tov.tZ', '<i>t</i><sub>Z</sub>', 's', 0.1, 10000, 1, 'mag') +
+    `<div class="info"><i>t</i><sub>Z</sub>: gewünschter Zündzeitpunkt für die Rückrechnung der Betriebsspannung.</div>`;
   $('tovPts').innerHTML = DEF.tov.t.map((_, i) =>
     `<tr><td><input class="num" data-path="tov.t.${i}" data-kind="mag" inputmode="decimal"></td>` +
     `<td><input class="num" data-path="tov.np.${i}" data-kind="mag" inputmode="decimal"></td>` +
