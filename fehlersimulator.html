@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>110-kV-Fehlersimulator</title>
+<style>
+:root{
+  --ink:#1b2f5f; --paper:#fcfbf7; --bg:#eceff4; --line:#c9cfdb; --muted:#5d6b85;
+  --bad:#d6336c; --sel:#d6336c; --hl:rgba(255,221,0,.5); --fault:#c92a2a;
+  --cUG:#1f5fbf; --cU:#2b8a3e; --cUL:#e8590c; --cUW:#7b3fbf; --cUM:#1b2f5f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#1d2433;font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:12px 20px;background:var(--ink);color:#fff}
+header h1{margin:0;font-size:18px;font-weight:600}
+header p{margin:2px 0 0;font-size:12.5px;opacity:.8}
+main{padding:14px;max-width:1700px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.top{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:14px}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.panel h2{margin:0 0 6px;font-size:14px;color:var(--ink);font-weight:650}
+svg{display:block;width:100%;height:auto}
+.u{text-decoration:underline}
+sub{font-size:.75em}
+.opts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;margin-top:6px}
+.opts label{display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
+.sw{display:inline-block;width:14px;height:4px;border-radius:2px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.card h3{margin:0 0 6px;font-size:13.5px;color:var(--ink)}
+.row{display:grid;grid-template-columns:44px 72px 22px 10px 54px 10px minmax(60px,1fr);align-items:center;gap:4px;margin:5px 0}
+.row.real{grid-template-columns:44px 72px 22px minmax(60px,1fr)}
+.row label{font-weight:600;color:var(--ink)}
+.row .unit{color:var(--muted);font-size:12px}
+input.num{width:100%;padding:3px 5px;border:1px solid var(--line);border-radius:4px;font:inherit;font-size:13px;background:#fff;text-align:right}
+input:disabled{opacity:.45;cursor:not-allowed}
+input.num.bad{border-color:var(--bad);background:#fff0f4;outline:1px solid var(--bad)}
+input[type=range]{width:100%;margin:0}
+select{font:inherit;font-size:13px;padding:2px 4px;border:1px solid var(--line);border-radius:4px;background:#fff;max-width:100%}
+.line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:5px 0;font-size:13px}
+.info{font-size:12.5px;color:var(--muted);margin-top:4px}
+.info b{color:var(--ink);font-weight:600}
+.warn{color:var(--bad);font-weight:600;font-size:12.5px;margin-top:4px}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--ink);border-radius:6px;background:#fff;color:var(--ink);cursor:pointer}
+button:hover{background:var(--ink);color:#fff}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:4px 8px;border-bottom:1px solid #e3e6ec;text-align:right;white-space:nowrap}
+th{color:var(--ink);font-weight:600;background:#f2f4f8}
+th:first-child,td:first-child{text-align:left}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:#f3f5fa}
+tr.chg td{background:rgba(255,221,0,.33)}
+tr.chg:hover td{background:rgba(255,221,0,.45)}
+tr.sel td{box-shadow:inset 0 2px 0 var(--sel),inset 0 -2px 0 var(--sel);color:var(--sel)}
+.tablewrap{overflow-x:auto}
+.leftcol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.lvpanel{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.lvsvg{flex:1 1 320px;max-width:440px;min-width:0}
+.lvopts{flex:1 1 220px;min-width:0}
+.lvopts .opts label{white-space:normal;align-items:flex-start}
+.lvopts .opts label span{white-space:nowrap}
+.lvopts .opts .sw{flex:none;margin-top:8px}
+footer{font-size:12px;color:var(--muted);padding:0 14px 14px;max-width:1700px;margin:0 auto}
+/* Schaltbild */
+#sch .w{stroke:var(--ink);stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+#sch .zb{stroke:var(--ink);stroke-width:2;fill:var(--paper)}
+#sch .zb.dash{stroke-dasharray:4 3;stroke-width:1.5}
+#sch .dot{stroke:var(--ink);stroke-width:1.6;fill:var(--paper)}
+#sch .dot.f{fill:var(--ink)}
+#sch .region{fill:none;stroke:#b8c1d6;stroke-dasharray:6 5;stroke-width:1.2}
+#sch text{fill:var(--ink);font-size:13px}
+#sch text.hd{font-size:16px;font-weight:700;letter-spacing:.3px}
+#sch text.hd2{font-size:14px;font-weight:600;fill:var(--muted)}
+#sch text.sm{font-size:11px}
+#sch text.flt{fill:var(--fault);font-size:12px}
+#sch .bolt{stroke:var(--fault);stroke-width:2.2;fill:none;stroke-linejoin:round}
+#sch .xmark{fill:var(--fault);font-size:22px;font-weight:700}
+.vl{stroke:var(--paper);stroke-width:4px;paint-order:stroke;stroke-linejoin:round;cursor:pointer}
+.vl.chg{stroke:#fde67c}
+.vl.sel{fill:var(--sel)!important}
+.marker{fill:var(--hl)}
+.selbox{fill:none;stroke:var(--sel);stroke-width:1.5;stroke-dasharray:3 2}
+.arr{cursor:pointer}
+.arr line.s{stroke:var(--ink);stroke-width:1.6}
+.arr polygon{fill:var(--ink)}
+.arr.thick line.s{stroke-width:4.5}
+.arr .hit{stroke:transparent;stroke-width:12}
+.arr.sel line.s{stroke:var(--sel)}
+.arr.sel polygon{fill:var(--sel)}
+/* Zeigerdiagramm */
+svg.phd text{font-size:11.5px;fill:#1d2433}
+svg.phd .grid{stroke:#d5dae5;fill:none;stroke-width:1}
+svg.phd .ray{stroke:#e2e6ee;stroke-dasharray:3 4;stroke-width:1}
+svg.phd .axis{stroke:#9aa5bb;stroke-width:1.2}
+svg.phd .gl{fill:#8792a8;font-size:10px}
+svg.phd .pl{stroke:var(--paper);stroke-width:3.5px;paint-order:stroke;stroke-linejoin:round;cursor:pointer}
+svg.phd .pl.sel{fill:var(--sel)}
+svg.phd .vec{cursor:pointer}
+svg.phd .vec .hit{stroke:transparent;stroke-width:12}
+@media (max-width:1000px){ .top{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<header>
+  <h1>110-kV-Drehstromsystem – Spannungen bei Leiterunterbrechung und Erdschluss</h1>
+  <p>Kompensiertes Netz · Modifizierte Knotenpunktanalyse mit komplexen Effektivwertzeigern · 50 Hz</p>
+</header>
+<main>
+  <section class="top">
+    <div class="leftcol">
+      <div class="panel">
+        <h2>Schaltbild</h2>
+        <svg id="sch" viewBox="0 0 1320 560" role="img" aria-label="Schaltbild"></svg>
+      </div>
+      <div class="panel lvpanel">
+        <div class="lvsvg">
+          <h2>Zeigerdiagramm Niederspannung (Abschätzung)</h2>
+          <svg id="phlv" class="phd" viewBox="0 0 540 540" role="img" aria-label="Zeigerdiagramm Niederspannung"></svg>
+        </div>
+        <div class="lvopts">
+          <div class="opts" style="flex-direction:column;align-items:flex-start">
+            <label><input type="checkbox" id="lv-S" checked><span class="sw" style="background:var(--cU)"></span>Strangspannungen <span><span class="u">U</span><sub>NS1–3</sub></span> (Leiter–N)</label>
+            <label><input type="checkbox" id="lv-L" checked><span class="sw" style="background:var(--cUL)"></span>Verkettete Spannungen <span><span class="u">U</span><sub>NS12</sub></span>, <span><span class="u">U</span><sub>NS23</sub></span>, <span><span class="u">U</span><sub>NS31</sub></span></label>
+            <label><input type="checkbox" id="lv-tri">Verkettete als Dreieck zwischen den Spitzen</label>
+            <label><input type="checkbox" id="lv-cons">Konstruktionslinien</label>
+            <label><input type="checkbox" id="lv-ref" checked>Referenz fehlerfrei</label>
+          </div>
+          <div class="info" id="lvInfo"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Zeigerdiagramm</h2>
+      <svg id="ph" class="phd" viewBox="0 0 540 540" role="img" aria-label="Zeigerdiagramm"></svg>
+      <div class="opts">
+        <label><input type="checkbox" id="ph-UG" checked><span class="sw" style="background:var(--cUG)"></span>Quellen <span><span class="u">U</span><sub>G1–3</sub></span></label>
+        <label><input type="checkbox" id="ph-U" checked><span class="sw" style="background:var(--cU)"></span>Leiter-Erde <span><span class="u">U</span><sub>1–3</sub></span></label>
+        <label><input type="checkbox" id="ph-UL" checked><span class="sw" style="background:var(--cUL)"></span>Verkettete</label>
+        <label><input type="checkbox" id="ph-UW" checked><span class="sw" style="background:var(--cUW)"></span>Wicklung <span><span class="u">U</span><sub>W1–3</sub></span></label>
+        <label><input type="checkbox" id="ph-UM" checked><span class="sw" style="background:var(--cUM);box-shadow:0 0 0 3px rgba(255,221,0,.6)"></span><span><span class="u">U</span><sub>M</sub></span></label>
+      </div>
+      <div class="opts">
+        <label><input type="checkbox" id="ph-cons">Konstruktionslinien</label>
+        <label><input type="checkbox" id="ph-tri">Verkettete als Dreieck zwischen den Spitzen von <span class="u">U</span><sub>1</sub>–<span class="u">U</span><sub>3</sub></label>
+        <label><input type="checkbox" id="ph-ref" checked>Referenz fehlerfrei</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Eingaben</h2>
+    <div class="btns" style="margin-bottom:10px">
+      <button id="btnSym">Symmetrisch zurücksetzen</button>
+      <button id="btnDef">Alle Standardwerte</button>
+      <button id="btnS2" title="Schaltet zusätzlich das vereinfachte Modell ein">Fall S.2: Doppelfehler, Ableiter Z → ∞</button>
+      <button id="btnS3" title="Schaltet zusätzlich das vereinfachte Modell ein">Fall S.3: Doppelfehler, Ableiter Z → 0</button>
+    </div>
+    <div class="line" style="margin-bottom:10px">
+      <label><input type="checkbox" data-path="ideal"> <b>Vereinfachtes Modell wie Musterlösung</b>
+        (starre Quellen: <span class="u">Z</span><sub>N</sub>, <span class="u">Z</span><sub>1</sub>–<span class="u">Z</span><sub>3</sub> → 0)</label>
+      <span class="info" style="margin:0">Aus: Spannungsfälle durch Last-, Kapazitäts- und Spulenströme auf der Leitung werden berücksichtigt.</span>
+    </div>
+    <div class="cards">
+      <div class="card"><h3>Spannungsquellen</h3><div id="grpUG"></div></div>
+      <div class="card"><h3>Leitungsimpedanzen</h3><div id="grpZ"></div></div>
+      <div class="card"><h3>Netzimpedanz (alle Phasen)</h3><div id="grpZN"></div>
+        <div class="info">0 Ω bedeutet <span class="u">Z</span><sub>N</sub> → 0 (Ersatzwert 10⁻⁶ Ω).</div></div>
+      <div class="card"><h3>Transformator (Wicklungen)</h3><div id="grpZW"></div></div>
+      <div class="card"><h3>Kompensation</h3><div id="grpZP"></div>
+        <div class="line"><label><input type="checkbox" data-path="CE"> Erdkapazitäten <i>C</i><sub>E</sub> berücksichtigen</label></div>
+        <div class="info" id="ceInfo"></div></div>
+      <div class="card"><h3>Überspannungsableiter</h3>
+        <div class="line">Modus
+          <select data-path="arr.mode">
+            <option value="inf">Z → ∞ (nicht angesprochen)</option>
+            <option value="zero">Z → 0 (gezündet)</option>
+            <option value="free">Impedanz frei</option>
+            <option value="res">Aus gemessener Restspannung</option>
+          </select></div>
+        <div id="arrFree"></div>
+        <div id="arrRes"></div>
+        <div class="warn" id="arrMsg"></div>
+        <div class="info" id="arrInfo"></div></div>
+      <div class="card"><h3>Fehler</h3>
+        <div class="line">Szenario
+          <select data-path="scen">
+            <option value="ok">Fehlerfrei (symmetrisch)</option>
+            <option value="double">Doppelfehler: Leiterunterbrechung + Erdschluss</option>
+          </select></div>
+        <div class="line">Phase
+          <select data-path="phase" data-num="1"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+          Erdschlussort
+          <select data-path="loc">
+            <option value="net">netzseitig der Unterbrechung (am Mast)</option>
+            <option value="trafo">trafoseitig</option>
+          </select></div>
+        <div id="grpRF"></div>
+        <div class="line">
+          <label><input type="checkbox" data-path="brk"> Unterbrechung</label>
+          <label><input type="checkbox" data-path="ef"> Erdschluss</label>
+        </div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Wertetabelle</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Größe</th><th>Betrag</th><th>Winkel</th><th>Betrag fehlerfrei</th><th>Winkel fehlerfrei</th><th>Δ Betrag</th></tr></thead>
+        <tbody id="tbl"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<footer id="foot"></footer>
+
+<script>
+'use strict';
+/*<CORE>*/
+/* =====================================================================
+   Complex – komplexe Zahlen
+   ===================================================================== */
+class Complex {
+  constructor(re = 0, im = 0) { this.re = re; this.im = im; }
+  static polar(m, deg) { const r = deg * Math.PI / 180; return new Complex(m * Math.cos(r), m * Math.sin(r)); }
+  add(b) { return new Complex(this.re + b.re, this.im + b.im); }
+  sub(b) { return new Complex(this.re - b.re, this.im - b.im); }
+  mul(b) { return new Complex(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re); }
+  div(b) {
+    const d = b.re * b.re + b.im * b.im;
+    return new Complex((this.re * b.re + this.im * b.im) / d, (this.im * b.re - this.re * b.im) / d);
+  }
+  scale(k) { return new Complex(this.re * k, this.im * k); }
+  neg() { return new Complex(-this.re, -this.im); }
+  conj() { return new Complex(this.re, -this.im); }
+  abs() { return Math.hypot(this.re, this.im); }
+  /** Winkel in Grad im Bereich (−180°, 180°] */
+  arg() {
+    let a = Math.atan2(this.im, this.re) * 180 / Math.PI;
+    if (a <= -180 + 1e-9) a += 360;
+    return a;
+  }
+}
+const C0 = new Complex(0, 0), ONE = new Complex(1, 0);
+
+/* =====================================================================
+   Solver (MNA) – Gauß-Elimination mit Spaltenpivotisierung
+   ===================================================================== */
+const OMEGA = 2 * Math.PI * 50;   // Kreisfrequenz bei 50 Hz
+const ZERO_Z = 1e-6;              // Ersatzimpedanz für Z → 0 in Ω
+const GLEAK = 1e-12;              // Ableitung jedes Knotens nach Erde in S
+
+function gaussSolve(A, b) {
+  const n = b.length;
+  for (let c = 0; c < n; c++) {
+    // Pivotzeile mit größtem Betrag suchen
+    let p = c, mx = A[c][c].abs();
+    for (let r = c + 1; r < n; r++) { const v = A[r][c].abs(); if (v > mx) { mx = v; p = r; } }
+    if (mx === 0) throw new Error('Singuläre Matrix');
+    if (p !== c) { [A[c], A[p]] = [A[p], A[c]]; [b[c], b[p]] = [b[p], b[c]]; }
+    const piv = A[c][c];
+    for (let r = c + 1; r < n; r++) {
+      if (A[r][c].re === 0 && A[r][c].im === 0) continue;
+      const f = A[r][c].div(piv);
+      for (let k = c; k < n; k++) A[r][k] = A[r][k].sub(f.mul(A[c][k]));
+      b[r] = b[r].sub(f.mul(b[c]));
+    }
+  }
+  // Rückwärtseinsetzen
+  const x = new Array(n);
+  for (let r = n - 1; r >= 0; r--) {
+    let s = b[r];
+    for (let k = r + 1; k < n; k++) s = s.sub(A[r][k].mul(x[k]));
+    x[r] = s.div(A[r][r]);
+  }
+  return x;
+}
+
+/** Löst ein Netz {nodes, elements}; liefert Knotenpotentiale (E = 0). */
+function solveMNA(net) {
+  const idx = {};
+  net.nodes.forEach((n, i) => { idx[n] = i; });
+  const ix = n => (n === 'E' ? -1 : idx[n]);
+  const nN = net.nodes.length;
+  const nV = net.elements.filter(e => e.type === 'V').length;
+  const N = nN + nV;
+  const A = Array.from({ length: N }, () => Array.from({ length: N }, () => new Complex()));
+  const b = Array.from({ length: N }, () => new Complex());
+  const addY = (a, c, y) => {
+    if (a >= 0) A[a][a] = A[a][a].add(y);
+    if (c >= 0) A[c][c] = A[c][c].add(y);
+    if (a >= 0 && c >= 0) { A[a][c] = A[a][c].sub(y); A[c][a] = A[c][a].sub(y); }
+  };
+  // winzige Ableitung jedes Knotens gegen Singularität (z. B. schwebender Sternpunkt)
+  for (let i = 0; i < nN; i++) A[i][i] = A[i][i].add(new Complex(GLEAK, 0));
+  let k = 0;
+  for (const e of net.elements) {
+    if (e.type === 'Y') {
+      if (e.y) addY(ix(e.a), ix(e.b), e.y);
+    } else if (e.type === 'V') {
+      const j = nN + k++, p = ix(e.p), q = ix(e.n);
+      if (p >= 0) { A[p][j] = A[p][j].add(ONE); A[j][p] = A[j][p].add(ONE); }
+      if (q >= 0) { A[q][j] = A[q][j].sub(ONE); A[j][q] = A[j][q].sub(ONE); }
+      b[j] = e.v;
+    } else if (e.type === 'YM') {
+      // gekoppelter Zweigsatz: I_a = Σ Y_ac·(V_c − V_ref)
+      const r = ix(e.ref), n = e.nodes.map(ix);
+      for (let a = 0; a < n.length; a++) for (let c = 0; c < n.length; c++) {
+        const y = e.Y[a][c];
+        A[n[a]][n[c]] = A[n[a]][n[c]].add(y);
+        if (r >= 0) {
+          A[n[a]][r] = A[n[a]][r].sub(y); A[r][n[c]] = A[r][n[c]].sub(y);
+          A[r][r] = A[r][r].add(y);
+        }
+      }
+    }
+  }
+  const x = gaussSolve(A, b);
+  const V = { E: C0 };
+  net.nodes.forEach((n, i) => { V[n] = x[i]; });
+  return V;
+}
+
+/* =====================================================================
+   buildNetwork(params) → Knoten/Zweige
+   ===================================================================== */
+/** Impedanz aus {m, a}; Betrag 0 → Ersatzimpedanz 1e-6 Ω */
+function zOf(q) { return q.m <= 0 ? new Complex(ZERO_Z, 0) : Complex.polar(q.m, q.a); }
+
+/** Leiter-Erde-Kapazität C_E in F aus Petersenspule und Verstimmung */
+function calcCE(p) {
+  const XP = Math.abs(p.ZP.m * Math.sin(p.ZP.a * Math.PI / 180));
+  const f = 1 + p.v / 100;
+  if (XP < 1e-9 || f <= 0) return 0;
+  return 1 / (3 * OMEGA * XP * f);
+}
+
+/**
+ * Baut das Netz auf. zA: Ableiterimpedanz (Complex) oder null für Z → ∞.
+ * Knoten: N, S1..3, A1..3, T1..3, M; Erde E ist Bezug.
+ */
+function buildNetwork(p, zA) {
+  const nodes = ['N', 'S1', 'S2', 'S3', 'A1', 'A2', 'A3', 'T1', 'T2', 'T3', 'M'];
+  const el = [];
+  const Z = (a, b, z, name) => el.push({ type: 'Y', a, b, y: z ? ONE.div(z) : null, name });
+  const ce = calcCE(p);
+  for (let k = 1; k <= 3; k++) {
+    const g = p.UG[k - 1];
+    // Quelle zwischen N (−) und S_k (+)
+    el.push({ type: 'V', p: 'S' + k, n: 'N', v: Complex.polar(g.m, g.a), name: 'UG' + k });
+    // Netzimpedanz Z_N und Leitungsimpedanz Z_k in Reihe zwischen S_k und A_k
+    // vereinfachtes Modell (wie Musterlösung): Z_N und Z_k → 0
+    Z('S' + k, 'A' + k, p.ideal ? new Complex(ZERO_Z, 0) : zOf(p.ZN).add(zOf(p.Z[k - 1])), 'ZL' + k);
+    // Leiter-Erde-Kapazität am Mast
+    // Leiter-Erde-Kapazität je Phase, mit Unsymmetrie ΔC_k in %
+    if (p.CE && ce > 0) el.push({ type: 'Y', a: 'A' + k, b: 'E', y: new Complex(0, OMEGA * ce * (1 + p.dC[k - 1] / 100)), name: 'CE' + k });
+    // Leitungsschalter A_k – T_k (offen → kein Zweig)
+    const open = p.brk && p.phase === k;
+    if (!open) Z('A' + k, 'T' + k, new Complex(ZERO_Z, 0), 'SW' + k);
+    // Wicklung T_k – M
+    if (p.coup !== 'core') Z('T' + k, 'M', zOf(p.ZW[k - 1]), 'ZW' + k);
+  }
+  if (p.coup === 'core') {
+    // Dreischenkelkern bzw. Dreieckswicklung: Mit-/Gegensystem über Z_Wk,
+    // Nullsystem über Z_0W  →  Y = diag(Y_k) + (Y_0 − Ȳ_1)·J/3
+    const yk = p.ZW.map(q => ONE.div(zOf(q)));
+    const y1 = yk[0].add(yk[1]).add(yk[2]).scale(1 / 3);
+    const yx = ONE.div(zOf(p.Z0W)).sub(y1).scale(1 / 3);
+    const Y = [0, 1, 2].map(a => [0, 1, 2].map(c => (a === c ? yk[a].add(yx) : yx)));
+    el.push({ type: 'YM', nodes: ['T1', 'T2', 'T3'], ref: 'M', Y, name: 'ZW' });
+  }
+  Z('N', 'E', zOf(p.ZP), 'ZP');                 // Petersenspule
+  if (zA) Z('M', 'E', zA, 'ZA');                // Überspannungsableiter
+  if (p.ef) {                                    // Erdschluss über R_F
+    const at = (p.loc === 'net' ? 'A' : 'T') + p.phase;
+    Z(at, 'E', new Complex(p.RF > 0 ? p.RF : ZERO_Z, 0), 'RF');
+  }
+  return { nodes, elements: el };
+}
+
+/* =====================================================================
+   compute(params) → Ergebnisobjekt
+   ===================================================================== */
+function compute(p) {
+  const ce = calcCE(p);
+  const info = { mode: p.arr.mode, msg: '' };
+  let zA = null;
+  switch (p.arr.mode) {
+    case 'zero': zA = new Complex(ZERO_Z, 0); break;
+    case 'free': zA = zOf({ m: p.arr.zm, a: p.arr.za }); break;
+    case 'res': {
+      // Thevenin-Ersatzquelle an M–E
+      const Uth = solveMNA(buildNetwork(p, null)).M;
+      const zs = new Complex(ZERO_Z, 0);
+      const Ik = solveMNA(buildNetwork(p, zs)).M.div(zs);
+      const Ur = p.arr.ures, ut = Uth.abs();
+      info.Uth = Uth;
+      if (Ur >= ut || Ik.abs() === 0) {
+        info.msg = 'Restspannung ≥ Leerlaufspannung am Sternpunkt – Ableiter spricht nicht an';
+      } else {
+        const Zth = Uth.div(Ik);
+        info.Zth = Zth;
+        const e = Complex.polar(1, p.arr.ares);
+        const a = ut * ut - Ur * Ur;
+        const B = -2 * Ur * Ur * e.mul(Zth.conj()).re;
+        const Cq = -Ur * Ur * Zth.abs() ** 2;
+        const z = (-B + Math.sqrt(B * B - 4 * a * Cq)) / (2 * a);
+        zA = z > ZERO_Z ? Complex.polar(z, p.arr.ares) : new Complex(ZERO_Z, 0);
+      }
+      break;
+    }
+    default: break; // 'inf'
+  }
+  const V = solveMNA(buildNetwork(p, zA));
+  const v = {};
+  for (let k = 1; k <= 3; k++) {
+    v['UG' + k] = Complex.polar(p.UG[k - 1].m, p.UG[k - 1].a);
+    v['U' + k] = V['A' + k];
+    v['UT' + k] = V['T' + k];
+    v['UW' + k] = V['T' + k].sub(V.M);
+  }
+  v.U12 = v.U1.sub(v.U2);
+  v.U23 = v.U2.sub(v.U3);
+  v.U31 = v.U3.sub(v.U1);
+  v.UM = V.M;
+  v.UN = V.N;
+  v.IA = zA ? V.M.div(zA).scale(1000) : C0;   // kV/Ω = kA → A
+  v.IP = V.N.div(zOf(p.ZP)).scale(1000);       // Spulenstrom N → E
+  // Fehlerstrom (Reststrom) an der Fehlerstelle nach Erde
+  v.IF = p.ef ? V[(p.loc === 'net' ? 'A' : 'T') + p.phase].div(new Complex(p.RF > 0 ? p.RF : ZERO_Z, 0)).scale(1000) : C0;
+  // Unterspannungsseite (Abschätzung): proportional zu den Wicklungsspannungen,
+  // 110 kV/√3 an der Wicklung ↦ U_NS/√3, Phasendrehung der Schaltgruppen vernachlässigt
+  const kNS = p.ULV / 110;   // kV → V
+  for (let k = 1; k <= 3; k++) v['UNS' + k] = v['UW' + k].scale(kNS);
+  v.UNS12 = v.UNS1.sub(v.UNS2);
+  v.UNS23 = v.UNS2.sub(v.UNS3);
+  v.UNS31 = v.UNS3.sub(v.UNS1);
+  return { v, V, zA, ce, info };
+}
+
+/* =====================================================================
+   Standardwerte
+   ===================================================================== */
+const DEF = {
+  UG: [{ m: 63.51, a: 0 }, { m: 63.51, a: 120 }, { m: 63.51, a: 240 }],
+  ZN: { m: 0, a: 85 },
+  Z: [{ m: 12.5, a: 73 }, { m: 12.5, a: 73 }, { m: 12.5, a: 73 }],
+  ZW: [{ m: 300, a: 25 }, { m: 300, a: 25 }, { m: 300, a: 25 }],
+  ZP: { m: 600, a: 87 }, v: 5, CE: true,
+  arr: { mode: 'inf', zm: 1000, za: 0, ures: 50, ares: 0 },
+  scen: 'ok', phase: 3, loc: 'net', RF: 0, brk: false, ef: false,
+  ideal: true,
+  dC: [0, 0, 0],
+  coup: 'none', Z0W: { m: 30, a: 80 }, ULV: 400
+};
+const clone = o => JSON.parse(JSON.stringify(o));
+
+/* =====================================================================
+   Formatierung (Dezimalkomma)
+   ===================================================================== */
+function fmtNum(x, d) {
+  if (!Number.isFinite(x)) return '—';
+  if (Math.abs(x) < 0.5 * Math.pow(10, -d)) x = 0;
+  return x.toFixed(d).replace('.', ',').replace('-', '−');
+}
+function fmtSmart(x) { return fmtNum(x, x >= 100 ? 0 : x >= 10 ? 1 : 2); }
+/** Zeiger als "63,5 kV ∠0,0°" */
+function fmtPh(c, unit = 'kV', d = 1, tiny = 0.005) {
+  const m = c.abs();
+  if (m < tiny) return `0 ${unit}`;
+  return `${fmtNum(m, d)} ${unit} ∠${fmtNum(c.arg(), 1)}°`;
+}
+function fmtZq(q) { return q.m <= 0 ? '→ 0' : `${fmtSmart(q.m)} Ω ∠${fmtNum(q.a, 0)}°`; }
+function fmtZc(z) { return `${fmtSmart(z.abs())} Ω ∠${fmtNum(z.arg(), 1)}°`; }
+
+/* =====================================================================
+   Selbsttest
+   ===================================================================== */
+function selfTest(log = console.log) {
+  const base = clone(DEF);
+  base.ZN = { m: 0, a: 85 };
+  base.Z = [0, 1, 2].map(() => ({ m: 1e-6, a: 73 }));
+  base.ZW = [0, 1, 2].map(() => ({ m: 300, a: 25 }));
+  base.RF = 0;
+  const TOL = 0.005, REF = 63.51, out = [];
+  const UG = k => Complex.polar(63.51, [0, 120, 240][k - 1]);
+  const P = (m, a) => Complex.polar(m, a);
+  const chk = (t, name, got, exp, unit = 'kV') => {
+    const e = exp.abs(), err = got.sub(exp).abs();
+    const ok = e > 1 ? err <= TOL * e : err <= TOL * REF;
+    out.push({ ok, txt: `Test ${t}: ${name} = ${fmtPh(got, unit, 2)} (soll ${fmtPh(exp, unit, 2)})` });
+  };
+  const chkAbs = (t, name, got, exp) => {
+    const ok = Math.abs(got - exp) <= TOL * exp;
+    out.push({ ok, txt: `Test ${t}: |${name}| = ${fmtNum(got, 2)} kV (soll ${fmtNum(exp, 2)} kV)` });
+  };
+  // Test 1: fehlerfrei, Ableiter ∞
+  let p = clone(base), r = compute(p).v;
+  for (let k = 1; k <= 3; k++) chkAbs(1, 'U' + k, r['U' + k].abs(), 63.51);
+  ['U12', 'U23', 'U31'].forEach(n => chkAbs(1, n, r[n].abs(), 110.0));
+  chk(1, 'UM', r.UM, C0);
+  for (let k = 1; k <= 3; k++) chk(1, 'UW' + k, r['UW' + k], UG(k));
+  // Test 2: Doppelfehler Phase 3 netzseitig, Ableiter ∞
+  const dbl = clone(base);
+  Object.assign(dbl, { scen: 'double', brk: true, ef: true, phase: 3, loc: 'net' });
+  p = clone(dbl); r = compute(p).v;
+  chk(2, 'U3', r.U3, C0);
+  chk(2, 'U1', r.U1, P(110, 30));
+  chk(2, 'U2', r.U2, P(110, 90));
+  chk(2, 'U12', r.U12, P(110, -30));
+  chk(2, 'UN', r.UN, UG(3).neg());
+  chk(2, 'UW3', r.UW3, C0);
+  chk(2, 'UW1', r.UW1, P(55, -30));
+  chk(2, 'UW2 (= −UW1)', r.UW2, r.UW1.neg());
+  chk(2, 'UW1 (= (U1−U2)/2)', r.UW1, r.U1.sub(r.U2).scale(0.5));
+  chk(2, 'UM', r.UM, P(95.26, 60));
+  chk(2, 'UM (= −1,5·UG3)', r.UM, UG(3).scale(-1.5));
+  chk(2, 'UT3 (= UM)', r.UT3, r.UM);
+  // Test 3: Doppelfehler Phase 3 netzseitig, Ableiter Z → 0
+  p = clone(dbl); p.arr.mode = 'zero'; r = compute(p).v;
+  chk(3, 'UM', r.UM, C0);
+  chk(3, 'UW3', r.UW3, C0);
+  chk(3, 'UW1', r.UW1, P(110, 30));
+  chk(3, 'U1', r.U1, P(110, 30));
+  chk(3, 'UW1 (= U13)', r.UW1, r.U1.sub(r.U3));
+  chk(3, 'UW2', r.UW2, P(110, 90));
+  chk(3, 'U2', r.U2, P(110, 90));
+  chk(3, 'UW2 (= U23)', r.UW2, r.U23);
+  chk(3, 'U12', r.U12, P(110, -30));
+  // Test 4: Restspannungsmodus
+  p = clone(dbl); p.arr.mode = 'res'; p.arr.ures = 50; p.arr.ares = 0;
+  r = compute(p).v;
+  chkAbs(4, 'UM (U_res = 50 kV)', r.UM.abs(), 50.0);
+  // Test 5: vereinfachtes Modell mit Standard-Leitungswerten reproduziert Test 2
+  p = clone(DEF);
+  Object.assign(p, { scen: 'double', brk: true, ef: true, phase: 3, loc: 'net', ideal: true });
+  r = compute(p).v;
+  chk(5, 'U1 (vereinfacht, Z1–3 = 12,5 Ω)', r.U1, P(110, 30));
+  chk(5, 'UW1 (vereinfacht)', r.UW1, P(55, -30));
+  chk(5, 'UM (vereinfacht)', r.UM, P(95.26, 60));
+  // Test 6: Verlagerungsspannung durch kapazitive Unsymmetrie (fehlerfrei, starre Quellen)
+  //   U_N = −Σ jωC_k·U_Gk / (Y_P + Σ jωC_k)
+  p = clone(DEF); p.dC = [10, 0, 0];
+  r = compute(p).v;
+  {
+    const ce = calcCE(p);
+    let num = C0, den = ONE.div(zOf(p.ZP));
+    for (let k = 1; k <= 3; k++) {
+      const y = new Complex(0, OMEGA * ce * (1 + p.dC[k - 1] / 100));
+      num = num.add(y.mul(UG(k))); den = den.add(y);
+    }
+    chk(6, 'UN (ΔC_E1 = +10 %)', r.UN, num.neg().div(den));
+  }
+  // Test 7: kompensierter Erdschluss über R_F – Reststrom klein, U3 nahe 0
+  p = clone(dbl); p.ideal = true; p.RF = 200;
+  r = compute(p).v;
+  chk(7, 'IF = −(IP + ΣIC) (Kirchhoff)', r.IF, (() => {
+    const ce = calcCE(p); let ic = C0;
+    for (let k = 1; k <= 3; k++) ic = ic.add(r['U' + k].mul(new Complex(0, OMEGA * ce)).scale(1000));
+    return r.IP.add(ic).neg();
+  })(), 'A');
+  // Test 8: gekoppelte Wicklungen (Z_0W → 0), Fall S.3: induzierte Spannung in Wicklung 3
+  p = clone(dbl); p.arr.mode = 'zero'; p.coup = 'core'; p.Z0W = { m: 1e-3, a: 80 };
+  r = compute(p).v;
+  chk(8, 'UW1 (gekoppelt)', r.UW1, P(110, 30));
+  chk(8, 'UW3 = −(UW1 + UW2)', r.UW3, P(190.53, -120));
+  chk(8, 'UNS23 (400-V-Netz)', r.UNS23, r.UW2.sub(r.UW3).scale(400 / 110), 'V');
+  chk(8, 'UNS23 ≈ 1,06 kV', r.UNS23, P(1058.3, 70.9), 'V');
+  // Test 9: gekoppelte Wicklungen, Fall S.2: freier Sternpunkt → kein Nullsystem, Ergebnis wie ungekoppelt
+  p = clone(dbl); p.coup = 'core';
+  r = compute(p).v;
+  chk(9, 'UW1 (gekoppelt)', r.UW1, P(55, -30));
+  chk(9, 'UW3 (gekoppelt)', r.UW3, C0);
+  chk(9, 'UM (gekoppelt)', r.UM, P(95.26, 60));
+  let pass = 0;
+  for (const o of out) { log(`${o.ok ? 'PASS' : 'FAIL'}  ${o.txt}`); if (o.ok) pass++; }
+  log(`Selbsttest: ${pass}/${out.length} bestanden`);
+  return { pass, total: out.length };
+}
+/*</CORE>*/
+
+/* =====================================================================
+   UI/State
+   ===================================================================== */
+let state = clone(DEF);
+let selKey = null;
+let lastRes = null;
+const NS = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+
+/* Symbole: [Basis, Index] */
+const SYM = { U12: ['U', '12'], U23: ['U', '23'], U31: ['U', '31'], UM: ['U', 'M'], UN: ['U', 'N'], IA: ['I', 'A'], IP: ['I', 'P'], IF: ['I', 'F'],
+  UNS12: ['U', 'NS12'], UNS23: ['U', 'NS23'], UNS31: ['U', 'NS31'] };
+for (let k = 1; k <= 3; k++) {
+  SYM['UNS' + k] = ['U', 'NS' + k];
+  SYM['UG' + k] = ['U', 'G' + k]; SYM['U' + k] = ['U', String(k)];
+  SYM['UW' + k] = ['U', 'W' + k]; SYM['UT' + k] = ['U', 'T' + k];
+}
+/** unterstrichenes Formelzeichen in SVG, danach Text rest */
+function svgS(base, sub, rest = '') {
+  return `<tspan style="text-decoration:underline">${base}<tspan dy="3" font-size="0.75em">${sub}</tspan></tspan><tspan dy="-3">${rest}</tspan>`;
+}
+function svgK(key, rest) { const [b, s] = SYM[key]; return svgS(b, s, rest); }
+function htmlS(base, sub) { return `<span class="u">${base}</span><sub>${sub}</sub>`; }
+function htmlK(key) { const [b, s] = SYM[key]; return htmlS(b, s); }
+
+/* ---------- Einheiten und Schwellen ---------- */
+const unitOf = key => (key[0] === 'I' ? 'A' : key.startsWith('UNS') ? 'V' : 'kV');
+const TINY = { kV: 0.05, A: 0.5, V: 1 };
+
+/* ---------- Änderungserkennung gegenüber fehlerfrei ---------- */
+function isChanged(key, cur, ref) {
+  const tiny = TINY[unitOf(key)];
+  const m = cur.abs(), mr = ref.abs();
+  if (m < tiny && mr < tiny) return false;
+  if (Math.abs(m - mr) > 0.01 * Math.max(mr, tiny)) return true;
+  if (Math.min(m, mr) > tiny * 10) {
+    let d = Math.abs(cur.arg() - ref.arg()) % 360;
+    if (d > 180) d = 360 - d;
+    if (d > 1) return true;
+  }
+  return false;
+}
+
+/* =====================================================================
+   renderSchematic
+   ===================================================================== */
+const YL = [150, 230, 310], YE = 520, AX = [585, 610, 635];
+
+function sArrow(x1, y1, x2, y2, key, thick) {
+  const L = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / L, uy = (y2 - y1) / L;
+  const h = thick ? 15 : 9, w = thick ? 7 : 4;
+  const bx = x2 - ux * h, by = y2 - uy * h;
+  const cls = 'arr' + (thick ? ' thick' : '') + (key === selKey ? ' sel' : '');
+  return `<g class="${cls}" data-key="${key}"><line class="s" x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}"/>` +
+    `<polygon points="${x2},${y2} ${bx - uy * w},${by + ux * w} ${bx + uy * w},${by - ux * w}"/>` +
+    `<line class="hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/></g>`;
+}
+
+function renderSchematic(res, chg) {
+  const p = state, v = res.v, s = [];
+  const w = d => `<path class="w" d="${d}"/>`;
+  const dot = (x, y, f) => `<circle class="dot${f ? ' f' : ''}" cx="${x}" cy="${y}" r="3.5"/>`;
+  const txt = (x, y, html, cls = '', anchor = 'start') => `<text class="${cls}" x="${x}" y="${y}" text-anchor="${anchor}">${html}</text>`;
+  const vl = (key, x, y, anchor = 'start') =>
+    `<text class="vl${chg[key] ? ' chg' : ''}${key === selKey ? ' sel' : ''}" data-key="${key}" x="${x}" y="${y}" text-anchor="${anchor}">${svgK(key, ' = ' + (unitOf(key) === 'V' ? fmtPh(v[key], 'V', 0, 0.5) : fmtPh(v[key])))}</text>`;
+  const bolt = (x, y) => {
+    const m = (y + YE) / 2;
+    return `<path class="bolt" d="M${x} ${y}V${m - 22}L${x - 11} ${m - 1}L${x + 11} ${m + 1}L${x} ${m + 22}V${YE}"/>` +
+      dot(x, y, true) + txt(x + 8, YE - 10, `R<tspan dy="3" font-size="0.75em">F</tspan><tspan dy="-3"> = ${fmtSmart(p.RF)} Ω</tspan>`, 'flt');
+  };
+
+  // Bereiche und Überschriften
+  s.push('<rect class="region" x="16" y="60" width="268" height="476" rx="10"/>',
+    '<rect class="region" x="372" y="60" width="300" height="476" rx="10"/>',
+    '<rect class="region" x="772" y="60" width="538" height="476" rx="10"/>');
+  s.push(txt(150, 50, 'Netz', 'hd', 'middle'), p.ideal ? '' : txt(330, 50, 'Leitung', 'hd2', 'middle'),
+    txt(522, 50, 'Mast 1', 'hd', 'middle'), txt(1041, 50, 'Transformator', 'hd', 'middle'));
+
+  // Erdlinie
+  let hatch = '';
+  for (let x = 40; x <= 1302; x += 14) hatch += `M${x} ${YE + 3}L${x - 8} ${YE + 13}`;
+  s.push(`<path class="w" style="stroke-width:3" d="M28 ${YE}H1306"/>`, `<path class="w" style="stroke-width:1.2" d="${hatch}"/>`,
+    txt(30, YE + 32, 'Erde E', 'sm'));
+
+  // Sternpunkt N und Petersenspule
+  s.push(w('M50 150V310'), dot(50, 230, true), txt(40, 234, 'N', '', 'end'));
+  s.push(w('M50 310V370'), w('M50 370a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16'), w(`M50 434V${YE}`));
+  s.push(txt(70, 396, 'Petersenspule ' + svgS('Z', 'P')), txt(70, 413, fmtZq(p.ZP), 'sm'),
+    txt(70, 429, svgK('IP', ' = ' + fmtPh(v.IP, 'A', 1, 0.05)), 'sm'));
+  // Verlagerungsspannung U_N = Spannung an der Petersenspule (Pfeil N → E)
+  s.push(`<path class="w" style="stroke-width:1;stroke-dasharray:3 3" d="M50 330H210"/>`,
+    sArrow(210, 332, 210, YE - 3, 'UN'), vl('UN', 218, 470));
+
+  for (let k = 1; k <= 3; k++) {
+    const y = YL[k - 1], xa = AX[k - 1];
+    const open = p.brk && p.phase === k;
+    // Quelle
+    s.push(w(`M50 ${y}H112`), `<circle class="w" cx="130" cy="${y}" r="18"/>`, w(`M121 ${y}q4.5 -7 9 0t9 0`));
+    s.push(sArrow(152, y - 24, 108, y - 24, 'UG' + k), vl('UG' + k, 130, y - 32, 'middle'));
+    if (p.ideal) {
+      // vereinfachtes Modell: starre Verbindung Quelle – Mast
+      s.push(w(`M148 ${y}H690`));
+    } else {
+      // Netzimpedanz Z_N
+      s.push(w(`M148 ${y}H193`), `<rect class="zb" x="193" y="${y - 9}" width="44" height="18"/>`,
+        txt(215, y - 14, svgS('Z', 'N', p.ZN.m <= 0 ? ' → 0' : ' = ' + fmtZq(p.ZN)), 'sm', 'middle'));
+      // Leitungsimpedanz Z_k
+      s.push(w(`M237 ${y}H295`), `<rect class="zb" x="295" y="${y - 10}" width="50" height="20"/>`,
+        txt(320, y + 25, svgS('Z', String(k), ' = ' + fmtZq(p.Z[k - 1])), 'sm', 'middle'));
+      s.push(w(`M345 ${y}H690`));
+    }
+    // Erdkapazität
+    if (p.CE) {
+      s.push(dot(470, y, true), w(`M470 ${y}V${y + 13}M461 ${y + 13}H479M461 ${y + 19}H479M470 ${y + 19}V${y + 30}` +
+        `M462 ${y + 30}H478M465 ${y + 34}H475M468 ${y + 38}H472`),
+        txt(483, y + 23, `C<tspan dy="3" font-size="0.75em">E</tspan>`, 'sm'));
+    }
+    // Knoten am Mast und Leiter-Erde-Spannung
+    s.push(dot(xa, y));
+    s.push(sArrow(xa, y + 5, xa, YE - 3, 'U' + k), vl('U' + k, xa + 7, 366 + 28 * (k - 1)));
+    // Leitungsschalter
+    if (open) {
+      s.push(w(`M690 ${y}L726 ${y - 18}`), dot(690, y), dot(730, y), txt(710, y + 8, '✕', 'xmark', 'middle'));
+    } else {
+      s.push(w(`M690 ${y}H730`), dot(690, y), dot(730, y));
+    }
+    // Trafoseite
+    s.push(w(`M730 ${y}H820`), dot(790, y), `<rect class="zb" x="820" y="${y - 10}" width="60" height="20"/>`, w(`M880 ${y}H960`));
+    s.push(txt(850, y + 25, svgS('Z', 'W' + k, ' = ' + fmtZq(p.ZW[k - 1])), 'sm', 'middle'));
+    s.push(sArrow(815, y - 20, 885, y - 20, 'UW' + k), vl('UW' + k, 850, y - 28, 'middle'));
+    // Unterspannungsseite (angedeutet)
+    s.push(`<rect class="zb dash" x="1032" y="${y - 9}" width="44" height="18"/>`, w(`M1076 ${y}H1182`), txt(1198, y + 4, '…', '', 'middle'),
+      vl('UNS' + k, 1034, y - 14));
+    // Erdschluss
+    if (p.ef && p.phase === k) s.push(bolt(p.loc === 'net' ? 660 : 755, y));
+  }
+  // verkettete Spannungen (Pfeil von x nach y)
+  s.push(sArrow(410, 154, 410, 226, 'U12'), vl('U12', 418, 194));
+  s.push(sArrow(410, 234, 410, 306, 'U23'), vl('U23', 418, 274));
+  s.push(sArrow(392, 306, 392, 154, 'U31'), vl('U31', 384, 192, 'end'));
+
+  // Sternverbindung, M, Ableiter, U_M
+  s.push(w('M960 150V392'), dot(960, 350, true), txt(970, 345, 'M'));
+  s.push(`<rect class="zb" x="946" y="392" width="28" height="56"/>`, w(`M951 442L969 398M965 398h4v4`), w(`M960 448V${YE}`));
+  const zaTxt = p.arr.mode === 'zero' ? ' → 0' : res.zA ? (p.arr.mode === 'res' || p.arr.zm > 0 ? ' = ' + fmtZc(res.zA) : ' → 0') : ' → ∞';
+  s.push(txt(938, 414, 'Ableiter', '', 'end'), txt(938, 431, svgS('Z', 'A', zaTxt), 'sm', 'end'));
+  s.push(`<path class="w" style="stroke-width:1;stroke-dasharray:3 3" d="M964 350H1000"/>`);
+  s.push(sArrow(1000, 352, 1000, YE - 3, 'UM', true), vl('UM', 1012, 470));
+  // Kern und Unterspannungsseite
+  s.push(w('M1012 136V324M1018 136V324'), txt(1150, 92, 'US-Seite (Abschätzung)', 'sm', 'middle'));
+  // verkettete Spannungen der Niederspannung (Pfeil von x nach y)
+  s.push(dot(1145, 150), dot(1145, 310), dot(1160, 150), dot(1160, 230), dot(1160, 310));
+  s.push(sArrow(1160, 154, 1160, 226, 'UNS12'), vl('UNS12', 1168, 194));
+  s.push(sArrow(1160, 234, 1160, 306, 'UNS23'), vl('UNS23', 1168, 274));
+  s.push(sArrow(1145, 306, 1145, 154, 'UNS31'), vl('UNS31', 1151, 117));
+  if (p.coup === 'core') {
+    // Nullsystem-Pfad: Dreieckswicklung auf dem Kern mit Nullimpedanz Z_0W
+    s.push(`<path class="w" style="stroke-width:1.2;stroke-dasharray:4 3" d="M1015 324V414H1214"/>`,
+      w('M1240 380L1196 456H1222M1258 456H1284L1240 380'),
+      `<rect class="zb" x="1222" y="449" width="36" height="14"/>`,
+      txt(1240, 431, 'Δ', '', 'middle'),
+      txt(1240, 366, 'Kern gekoppelt – Nullsystem', 'sm', 'middle'),
+      txt(1240, 482, svgS('Z', '0W', ' = ' + fmtZq(p.Z0W)), 'sm', 'middle'));
+  } else {
+    s.push(txt(1170, 345, 'Wicklungen ungekoppelt', 'sm', 'middle'));
+  }
+
+  const svg = $('sch');
+  svg.innerHTML = s.join('');
+  decorate(svg);
+}
+
+/** Textmarker (geändert) und Auswahlrahmen unter Beschriftungen legen */
+function decorate(svg) {
+  svg.querySelectorAll('text.chg, text.sel').forEach(t => {
+    let b;
+    try { b = t.getBBox(); } catch (e) { return; }
+    if (!b || !b.width) return;
+    if (t.classList.contains('chg')) {
+      const r = document.createElementNS(NS, 'rect');
+      const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+      r.setAttribute('class', 'marker');
+      r.setAttribute('x', b.x - 4); r.setAttribute('y', b.y + b.height * 0.22);
+      r.setAttribute('width', b.width + 8); r.setAttribute('height', b.height * 0.72);
+      r.setAttribute('rx', 3);
+      r.setAttribute('transform', `rotate(-1.2 ${cx} ${cy})`);
+      t.parentNode.insertBefore(r, t);
+    }
+    if (t.classList.contains('sel')) {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('class', 'selbox');
+      r.setAttribute('x', b.x - 5); r.setAttribute('y', b.y - 2);
+      r.setAttribute('width', b.width + 10); r.setAttribute('height', b.height + 4);
+      r.setAttribute('rx', 4);
+      t.parentNode.insertBefore(r, t);
+    }
+  });
+}
+
+/* =====================================================================
+   renderPhasors
+   ===================================================================== */
+const COL = { UG: 'var(--cUG)', U: 'var(--cU)', UL: 'var(--cUL)', UW: 'var(--cUW)', UM: 'var(--cUM)' };
+const PAIRS = [['12', 1, 2], ['23', 2, 3], ['31', 3, 1]];
+
+function renderPhasors(res, ref) {
+  const o = {};
+  ['UG', 'U', 'UL', 'UW', 'UM', 'cons', 'tri', 'ref'].forEach(n => { o[n] = $('ph-' + n).checked; });
+
+  // Zeigerliste aufbauen
+  const groups = (r) => {
+    const V = r.v, L = [];
+    const add = (key, col, from, w) => L.push({ key, v: V[key], col, from: from || C0, w: w || 2 });
+    if (o.UG) for (let k = 1; k <= 3; k++) add('UG' + k, COL.UG);
+    if (o.UW) for (let k = 1; k <= 3; k++) add('UW' + k, COL.UW);
+    if (o.UL) for (const [xy, , y] of PAIRS) add('U' + xy, COL.UL, o.tri ? V['U' + y] : C0);
+    if (o.U) for (let k = 1; k <= 3; k++) add('U' + k, COL.U);
+    if (o.UM) add('UM', COL.UM, C0, 3.5);
+    return L;
+  };
+  const items = groups(res), refItems = o.ref ? groups(ref) : [];
+  const cons = [];
+  if (o.cons) {
+    const V = res.v;
+    if (o.UL) for (const [, x, y] of PAIRS) {
+      const tip = V['U' + x];
+      cons.push({ a: tip, b: tip.sub(V['U' + y]), col: COL.UL, op: 0.9 });
+      if (!o.tri) cons.push({ a: C0, b: V['U' + y].neg(), col: COL.UL, op: 0.35 });
+    }
+    if (o.UM) for (let k = 1; k <= 3; k++) {
+      cons.push({ a: V['UT' + k], b: V['UT' + k].sub(V['UW' + k]), col: COL.UW, op: 0.9 });
+      cons.push({ a: C0, b: V['UT' + k], col: COL.UW, op: 0.3 });
+    }
+  }
+  drawPhasors($('ph'), items, refItems, cons, {
+    unit: 'kV',
+    order: ['UM', 'U1', 'U2', 'U3', 'U12', 'U23', 'U31', 'UW1', 'UW2', 'UW3', 'UG1', 'UG2', 'UG3'],
+    mid: key => o.tri && /^U\d\d$/.test(key)
+  });
+}
+
+/** Zeigerdiagramm der Niederspannung: Strang- und verkettete Spannungen */
+function renderPhasorsLV(res, ref) {
+  const o = {};
+  ['S', 'L', 'tri', 'cons', 'ref'].forEach(n => { o[n] = $('lv-' + n).checked; });
+  const groups = (r) => {
+    const V = r.v, L = [];
+    const add = (key, col, from) => L.push({ key, v: V[key], col, from: from || C0, w: 2 });
+    if (o.L) for (const [xy, , y] of PAIRS) add('UNS' + xy, COL.UL, o.tri ? V['UNS' + y] : C0);
+    if (o.S) for (let k = 1; k <= 3; k++) add('UNS' + k, COL.U);
+    return L;
+  };
+  const items = groups(res), refItems = o.ref ? groups(ref) : [];
+  const cons = [];
+  if (o.cons && o.L) for (const [, x, y] of PAIRS) {
+    const tip = res.v['UNS' + x];
+    cons.push({ a: tip, b: tip.sub(res.v['UNS' + y]), col: COL.UL, op: 0.9 });
+    if (!o.tri) cons.push({ a: C0, b: res.v['UNS' + y].neg(), col: COL.UL, op: 0.35 });
+  }
+  drawPhasors($('phlv'), items, refItems, cons, {
+    unit: 'V',
+    order: ['UNS1', 'UNS2', 'UNS3', 'UNS12', 'UNS23', 'UNS31'],
+    mid: key => o.tri && /^UNS\d\d$/.test(key)
+  });
+}
+
+/** Zeichnet ein Zeigerdiagramm (Raster, Referenz, Konstruktion, Zeiger, Beschriftung) */
+function drawPhasors(svg, items, refItems, cons, opt) {
+  const S = 540, c = S / 2, R = 205, unit = opt.unit, dig = unit === 'V' ? 0 : 1;
+
+  // Skalierung auf größten sichtbaren Zeiger
+  let mx = 0;
+  for (const it of items.concat(refItems)) mx = Math.max(mx, it.from.abs(), it.from.add(it.v).abs());
+  for (const q of cons) mx = Math.max(mx, q.a.abs(), q.b.abs());
+  if (mx < 1e-6) mx = 1;
+  const raw = mx / 5, pw = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / pw;
+  const step = ([1, 2, 2.5, 5, 10].find(n => f <= n) || 10) * pw;
+  const rings = Math.max(1, Math.ceil(mx / step - 1e-9));
+  const sc = R / (rings * step);
+  const P = z => [c + z.re * sc, c - z.im * sc];
+
+  const s = [];
+  // Hilfskreise, 30°-Strahlen, Achsen
+  for (let i = 1; i <= rings; i++) {
+    const r = i * step * sc;
+    s.push(`<circle class="grid" cx="${c}" cy="${c}" r="${r}"/>`);
+    s.push(`<text class="gl" x="${c + r + 2}" y="${c + 12}">${fmtNum(i * step, step % 1 ? 1 : 0)}</text>`);
+  }
+  for (let a = 0; a < 360; a += 30) {
+    if (a % 90 === 0) continue;
+    const rr = a * Math.PI / 180;
+    s.push(`<line class="ray" x1="${c}" y1="${c}" x2="${c + R * Math.cos(rr)}" y2="${c - R * Math.sin(rr)}"/>`);
+  }
+  s.push(`<line class="axis" x1="${c - R - 20}" y1="${c}" x2="${c + R + 20}" y2="${c}"/>`,
+    `<line class="axis" x1="${c}" y1="${c + R + 20}" x2="${c}" y2="${c - R - 20}"/>`,
+    `<text class="gl" x="${c + R + 22}" y="${c - 4}">Re</text>`, `<text class="gl" x="${c + 5}" y="${c - R - 12}">Im</text>`);
+  s.push(`<text class="gl" x="8" y="${S - 10}">Maßstab: Kreisabstand ${fmtNum(step, step % 1 ? 1 : 0)} ${unit}</text>`);
+  s.push(`<line x1="8" y1="${S - 26}" x2="${8 + step * sc}" y2="${S - 26}" stroke="#5d6b85" stroke-width="2"/>`,
+    `<line x1="8" y1="${S - 30}" x2="8" y2="${S - 22}" stroke="#5d6b85"/><line x1="${8 + step * sc}" y1="${S - 30}" x2="${8 + step * sc}" y2="${S - 22}" stroke="#5d6b85"/>`);
+
+  const head = (x1, y1, x2, y2, col, w, op, extra = '') => {
+    const L = Math.hypot(x2 - x1, y2 - y1);
+    if (L < 3) return `<circle cx="${x2}" cy="${y2}" r="${2 + w / 2}" fill="${col}" opacity="${op}"/>`;
+    const ux = (x2 - x1) / L, uy = (y2 - y1) / L, h = Math.min(8 + w * 1.6, L * 0.6), hw = 3 + w * 0.8;
+    const bx = x2 - ux * h, by = y2 - uy * h;
+    return `<line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" stroke="${col}" stroke-width="${w}" opacity="${op}" stroke-linecap="round"/>` +
+      `<polygon points="${x2},${y2} ${bx - uy * hw},${by + ux * hw} ${bx + uy * hw},${by - ux * hw}" fill="${col}" opacity="${op}"/>` + extra;
+  };
+
+  // Referenz (fehlerfrei) blass im Hintergrund
+  s.push('<g style="pointer-events:none">');
+  for (const it of refItems) {
+    const [x1, y1] = P(it.from), [x2, y2] = P(it.from.add(it.v));
+    s.push(head(x1, y1, x2, y2, it.col, 1.2, 0.22));
+  }
+  s.push('</g>');
+  // Konstruktionslinien
+  for (const q of cons) {
+    const [x1, y1] = P(q.a), [x2, y2] = P(q.b);
+    s.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${q.col}" stroke-width="1.3" stroke-dasharray="5 4" opacity="${q.op}"/>`);
+  }
+  // Zeiger
+  for (const it of items) {
+    const [x1, y1] = P(it.from), [x2, y2] = P(it.from.add(it.v));
+    let under = '';
+    if (it.key === 'UM') under += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(255,221,0,.6)" stroke-width="13" stroke-linecap="round"/>`;
+    if (it.key === selKey) under += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--sel)" stroke-opacity=".3" stroke-width="10" stroke-linecap="round"/>`;
+    const w = it.key === selKey ? it.w + 1 : it.w;
+    s.push(`<g class="vec" data-key="${it.key}">${under}${head(x1, y1, x2, y2, it.col, w, 1)}` +
+      `<line class="hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/></g>`);
+  }
+
+  // Beschriftungen mit einfacher Kollisionsvermeidung
+  const placed = [];
+  const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const order = opt.order;
+  const sorted = items.slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  sorted.forEach((it, i) => {
+    const m = it.v.abs();
+    const zero = m * sc < 3;
+    const label = zero ? ' = 0' : ` ${fmtNum(m, dig)} ${unit}`;
+    const wTxt = (SYM[it.key][1].length * 0.75 + 1 + label.length) * 6.3;
+    let ax, ay, dx, dy;
+    const tip = P(it.from.add(it.v)), base = P(it.from);
+    if (zero) {
+      const ang = (-60 - i * 37) * Math.PI / 180;
+      [ax, ay] = tip; dx = Math.cos(ang); dy = Math.sin(ang);
+    } else if (opt.mid(it.key)) {
+      // Dreiecksdarstellung: Mitte der Seite, nach außen versetzt
+      ax = (tip[0] + base[0]) / 2; ay = (tip[1] + base[1]) / 2;
+      const nx = ax - c, ny = ay - c, nl = Math.hypot(nx, ny) || 1;
+      dx = nx / nl; dy = ny / nl;
+    } else {
+      [ax, ay] = tip;
+      const L = Math.hypot(tip[0] - base[0], tip[1] - base[1]);
+      dx = (tip[0] - base[0]) / L; dy = (tip[1] - base[1]) / L;
+    }
+    const px = -dy, py = dx;
+    let best = null;
+    for (const d of [10, 22, 34, 48, 62]) {
+      for (const t of [0, 12, -12, 24, -24, 36, -36]) {
+        const x = ax + dx * d + px * t, y = ay + dy * d + py * t;
+        const anchor = dx > 0.35 ? 'start' : dx < -0.35 ? 'end' : 'middle';
+        const x0 = anchor === 'start' ? x : anchor === 'end' ? x - wTxt : x - wTxt / 2;
+        const r = { x: x0 - 1, y: y - 8, w: wTxt + 2, h: 15 };
+        const cand = { x, y: y + 4, anchor, r };
+        if (!best) best = cand;
+        if (r.x < 2 || r.x + r.w > S - 2 || r.y < 2 || r.y + r.h > S - 2) continue;
+        if (placed.some(q => overlap(q, r))) continue;
+        placed.push(r);
+        it._lab = cand;
+        break;
+      }
+      if (it._lab) break;
+    }
+    const L = it._lab || best;
+    const col = it.col;
+    s.push(`<text class="pl${it.key === selKey ? ' sel' : ''}" data-key="${it.key}" x="${L.x}" y="${L.y}" text-anchor="${L.anchor}" style="fill:${it.key === selKey ? 'var(--sel)' : col}">` +
+      `${svgK(it.key, label)}</text>`);
+  });
+
+  svg.innerHTML = s.join('');
+}
+
+/* =====================================================================
+   renderTable
+   ===================================================================== */
+const ROWS = ['UG1', 'UG2', 'UG3', 'U1', 'U2', 'U3', 'U12', 'U23', 'U31', 'UW1', 'UW2', 'UW3', 'UM', 'UT1', 'UT2', 'UT3', 'UN', 'IP', 'IF', 'IA',
+  'UNS1', 'UNS2', 'UNS3', 'UNS12', 'UNS23', 'UNS31'];
+function renderTable(res, ref, chg) {
+  const h = [];
+  for (const key of ROWS) {
+    const unit = unitOf(key), tiny = TINY[unit] / 100;
+    const c = res.v[key], r = ref.v[key], m = c.abs(), mr = r.abs();
+    let dp;
+    if (mr < TINY[unit]) dp = m < TINY[unit] ? '0,0 %' : 'neu';
+    else { const d = 100 * (m - mr) / mr; dp = (d > 0.05 ? '+' : '') + fmtNum(d, 1) + ' %'; }
+    const ang = z => (z.abs() < tiny ? '—' : fmtNum(z.arg(), 1) + '°');
+    h.push(`<tr data-key="${key}" class="${chg[key] ? 'chg' : ''}${key === selKey ? ' sel' : ''}">` +
+      `<td>${htmlK(key)}</td><td>${fmtNum(m, 2)} ${unit}</td><td>${ang(c)}</td>` +
+      `<td>${fmtNum(mr, 2)} ${unit}</td><td>${ang(r)}</td><td>${dp}</td></tr>`);
+  }
+  $('tbl').innerHTML = h.join('');
+}
+
+/* =====================================================================
+   Gesamtaktualisierung
+   ===================================================================== */
+function update() {
+  let res, ref;
+  try {
+    res = compute(state);
+    const rp = clone(state); rp.brk = false; rp.ef = false;
+    ref = compute(rp);
+  } catch (e) { console.error(e); return; }
+  lastRes = res;
+  const chg = {};
+  for (const k of ROWS) chg[k] = isChanged(k, res.v[k], ref.v[k]);
+  renderSchematic(res, chg);
+  renderPhasors(res, ref);
+  renderPhasorsLV(res, ref);
+  renderTable(res, ref, chg);
+  updateInfo(res);
+}
+
+function updateInfo(res) {
+  const ce = res.ce;
+  $('ceInfo').innerHTML = `<i>C</i><sub>E</sub> = <b>${fmtNum(ce * 1e6, 3)} µF</b> je Leiter` +
+    ` (3ω<i>C</i><sub>E</sub> = ${fmtNum(3 * OMEGA * ce * 1e3, 3)} mS)` +
+    (state.CE ? '' : ' – abgeschaltet') +
+    `<br>${htmlK('UN')} = <b>${fmtPh(res.v.UN, 'kV', 2)}</b> · ${htmlK('IP')} = <b>${fmtPh(res.v.IP, 'A', 1, 0.05)}</b>` +
+    (state.ef ? ` · ${htmlK('IF')} = <b>${fmtPh(res.v.IF, 'A', 1, 0.05)}</b>` : '');
+  // im vereinfachten Modell sind Leitungs-, Netzimpedanz und Erdkapazitäten ausgeblendet
+  document.querySelectorAll('#grpZ input, #grpZN input').forEach(i => { i.disabled = state.ideal; });
+  $('z0Row').hidden = state.coup !== 'core';
+  // Kennwerte der Niederspannung
+  {
+    const v = res.v, un = state.ULV, us = un / Math.sqrt(3);
+    const ms = Math.max(v.UNS1.abs(), v.UNS2.abs(), v.UNS3.abs());
+    const ml = Math.max(v.UNS12.abs(), v.UNS23.abs(), v.UNS31.abs());
+    $('lvInfo').innerHTML = `Größte Strangspannung: <b>${fmtNum(ms, 0)} V</b> (${fmtNum(100 * ms / us, 0)} % von ${fmtNum(us, 0)} V)<br>` +
+      `Größte verkettete Spannung: <b>${fmtNum(ml, 0)} V</b> (${fmtNum(100 * ml / un, 0)} % von ${fmtNum(un, 0)} V)<br>` +
+      `Transformator: ${state.coup === 'core' ? 'Wicklungen magnetisch gekoppelt' : 'Wicklungen ungekoppelt (wie Skizze)'}` +
+      `<br>Abschätzung proportional zu den Wicklungsspannungen; Phasendrehung der Schaltgruppen vernachlässigt.`;
+  }
+  const m = state.arr.mode;
+  $('arrFree').hidden = m !== 'free';
+  $('arrRes').hidden = m !== 'res';
+  $('arrMsg').textContent = m === 'res' ? res.info.msg : '';
+  let t = '';
+  if (m === 'res' && res.info.Uth) {
+    t += `${htmlS('U', 'th')} = ${fmtPh(res.info.Uth, 'kV', 2)}`;
+    if (res.info.Zth) t += ` · ${htmlS('Z', 'th')} = ${fmtZc(res.info.Zth)}`;
+    t += '<br>';
+  }
+  const zTxt = res.zA ? (m === 'zero' || (m === 'free' && state.arr.zm <= 0) ? '→ 0' : fmtZc(res.zA)) : '→ ∞';
+  t += `${htmlS('Z', 'A')} <b>${res.zA && zTxt !== '→ 0' ? '= ' : ''}${zTxt}</b> · ${htmlS('I', 'A')} = <b>${fmtPh(res.v.IA, 'A', 2, 0.005)}</b>` +
+    ` · ${htmlS('U', 'M')} = <b>${fmtPh(res.v.UM, 'kV', 2)}</b>`;
+  $('arrInfo').innerHTML = t;
+}
+
+/* ---------- Eingabezeilen erzeugen ---------- */
+function cplxRow(path, sym, unit, max, step) {
+  return `<div class="row"><label>${sym}</label><input class="num" data-path="${path}.m" data-kind="mag" inputmode="decimal" aria-label="Betrag">` +
+    `<span class="unit">${unit}</span><span>∠</span><input class="num" data-path="${path}.a" data-kind="ang" inputmode="decimal" aria-label="Winkel °">` +
+    `<span class="unit">°</span><input type="range" min="0" max="${max}" step="${step}" data-path="${path}.m" aria-label="Betrag"></div>`;
+}
+function realRow(path, sym, unit, min, max, step, kind) {
+  return `<div class="row real"><label>${sym}</label><input class="num" data-path="${path}" data-kind="${kind}" inputmode="decimal">` +
+    `<span class="unit">${unit}</span><input type="range" min="${min}" max="${max}" step="${step}" data-path="${path}"></div>`;
+}
+function buildForm() {
+  $('grpUG').innerHTML = [0, 1, 2].map(i => cplxRow(`UG.${i}`, htmlS('U', 'G' + (i + 1)), 'kV', 150, 0.01)).join('');
+  $('grpZ').innerHTML = [0, 1, 2].map(i => cplxRow(`Z.${i}`, htmlS('Z', String(i + 1)), 'Ω', 100, 0.1)).join('');
+  $('grpZN').innerHTML = cplxRow('ZN', htmlS('Z', 'N'), 'Ω', 50, 0.1);
+  $('grpZW').innerHTML = [0, 1, 2].map(i => cplxRow(`ZW.${i}`, htmlS('Z', 'W' + (i + 1)), 'Ω', 2000, 1)).join('') +
+    `<div class="line">Kopplung <select data-path="coup">
+      <option value="none">keine – unabhängige Wicklungen (wie Skizze)</option>
+      <option value="core">magnetisch gekoppelt (Dreischenkelkern / Dreieckswicklung)</option></select></div>` +
+    `<div id="z0Row">${cplxRow('Z0W', htmlS('Z', '0W'), 'Ω', 300, 1)}</div>` +
+    realRow('ULV', '<i>U</i><sub>NS</sub>', 'V', 100, 1000, 10, 'mag') +
+    `<div class="info"><span class="u">Z</span><sub>0W</sub>: Nullimpedanz des Wicklungssatzes (≈ Streuimpedanz der Dreieckswicklung).
+      <i>U</i><sub>NS</sub>: Nennspannung der Niederspannung; die NS-Spannungen sind proportional zu den Wicklungsspannungen abgeschätzt.</div>`;
+  $('grpZP').innerHTML = cplxRow('ZP', htmlS('Z', 'P'), 'Ω', 3000, 1) + realRow('v', '<i>v</i>', '%', -50, 50, 0.5, 'v') +
+    [0, 1, 2].map(i => realRow(`dC.${i}`, `Δ<i>C</i><sub>E${i + 1}</sub>`, '%', -30, 30, 0.5, 'v')).join('');
+  $('arrFree').innerHTML = cplxRow('arr', htmlS('Z', 'A'), 'Ω', 5000, 1).replaceAll('"arr.m"', '"arr.zm"').replace('"arr.a"', '"arr.za"');
+  $('arrRes').innerHTML = realRow('arr.ures', '<i>U</i><sub>res</sub>', 'kV', 0, 120, 0.1, 'mag') + realRow('arr.ares', 'φ<sub>A</sub>', '°', -90, 90, 1, 'ang');
+  $('grpRF').innerHTML = realRow('RF', '<i>R</i><sub>F</sub>', 'Ω', 0, 500, 0.5, 'mag');
+}
+
+/* ---------- Pfadzugriff auf den Zustand ---------- */
+function getPath(o, path) { return path.split('.').reduce((a, k) => a[k], o); }
+function setPath(o, path, val) {
+  const ks = path.split('.'), last = ks.pop();
+  ks.reduce((a, k) => a[k], o)[last] = val;
+}
+function fmtIn(x) { return Number.isFinite(x) ? String(+x.toPrecision(10)).replace('.', ',') : ''; }
+function parseIn(s) {
+  s = String(s).trim().replace(',', '.');
+  if (s === '') return NaN;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+function valid(v, kind) {
+  if (!Number.isFinite(v)) return false;
+  if (kind === 'mag') return v >= 0;
+  if (kind === 'v') return v > -99;
+  return true;
+}
+
+function syncInputs() {
+  document.querySelectorAll('[data-path]').forEach(el => {
+    const val = getPath(state, el.dataset.path);
+    if (el.type === 'checkbox') el.checked = !!val;
+    else if (el.tagName === 'SELECT') el.value = String(val);
+    else if (el.type === 'range') el.value = val;
+    else { el.value = fmtIn(val); el.classList.remove('bad'); }
+  });
+}
+
+function onInput(e) {
+  const el = e.target, path = el.dataset.path;
+  if (!path) { if (el.id && (el.id.startsWith('ph-') || el.id.startsWith('lv-'))) update(); return; }
+  let val;
+  if (el.type === 'checkbox') val = el.checked;
+  else if (el.tagName === 'SELECT') val = el.dataset.num ? Number(el.value) : el.value;
+  else if (el.type === 'range') {
+    val = Number(el.value);
+    document.querySelectorAll(`input.num[data-path="${path}"]`).forEach(t => { t.value = fmtIn(val); t.classList.remove('bad'); });
+  } else {
+    val = parseIn(el.value);
+    if (!valid(val, el.dataset.kind)) { el.classList.add('bad'); return; }
+    el.classList.remove('bad');
+    document.querySelectorAll(`input[type=range][data-path="${path}"]`).forEach(r => { r.value = val; });
+  }
+  setPath(state, path, val);
+  if (path === 'scen') { state.brk = state.ef = (val === 'double'); syncInputs(); }
+  if (path === 'brk' || path === 'ef') {
+    if (state.brk && state.ef) state.scen = 'double';
+    else if (!state.brk && !state.ef) state.scen = 'ok';
+    document.querySelector('select[data-path="scen"]').value = state.scen;
+  }
+  update();
+}
+
+function toggleSel(key) { selKey = selKey === key ? null : key; update(); }
+
+function init() {
+  buildForm();
+  syncInputs();
+  document.addEventListener('input', onInput);
+  const clickSel = e => { const g = e.target.closest('[data-key]'); if (g) toggleSel(g.dataset.key); };
+  $('sch').addEventListener('click', clickSel);
+  $('ph').addEventListener('click', clickSel);
+  $('phlv').addEventListener('click', clickSel);
+  $('tbl').addEventListener('click', clickSel);
+
+  $('btnSym').onclick = () => {
+    state.UG = clone(DEF.UG);
+    state.Z = [0, 1, 2].map(() => clone(state.Z[0]));
+    state.ZW = [0, 1, 2].map(() => clone(state.ZW[0]));
+    state.scen = 'ok'; state.brk = false; state.ef = false;
+    syncInputs(); update();
+  };
+  $('btnDef').onclick = () => { state = clone(DEF); selKey = null; syncInputs(); update(); };
+  const fall = mode => {
+    Object.assign(state, { scen: 'double', brk: true, ef: true, phase: 3, loc: 'net', RF: 0 });
+    state.ideal = true;   // Bedingungen der Musterlösung
+    state.arr.mode = mode;
+    syncInputs(); update();
+  };
+  $('btnS2').onclick = () => fall('inf');
+  $('btnS3').onclick = () => fall('zero');
+
+  update();
+  const t = selfTest();
+  $('foot').textContent = `Selbsttest beim Laden: ${t.pass}/${t.total} Prüfungen bestanden (Details in der Browser-Konsole).`;
+}
+init();
+</script>
+</body>
+</html>
