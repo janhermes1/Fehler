@@ -553,9 +553,9 @@ const DEF = {
   ana: 'tov',
   // TOV-Festigkeit T = U/U_r über der Zeit (typische Beispielwerte, durch Herstellerdaten ersetzen)
   tov: { Ur: 84, Uc: 67, tS: 3, curve: 'np',
-    t: [0.1, 1, 10, 100, 1000],
-    np: [1.30, 1.20, 1.13, 1.07, 1.03],
-    pd: [1.22, 1.13, 1.07, 1.02, 0.98] }
+    t: [0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000],
+    np: [1.30, 1.25, 1.20, 1.16, 1.13, 1.10, 1.07, 1.05, 1.03, 1.01, 0.99],
+    pd: [1.22, 1.17, 1.13, 1.10, 1.07, 1.045, 1.02, 1.00, 0.98, 0.96, 0.94] }
 };
 
 /** TOV-Kennlinie: Punkte nach t sortiert, gültige Werte (t > 0, T > 0) */
@@ -756,12 +756,15 @@ function selfTest(log = console.log) {
   // Test 16: TOV-Kennlinie – log-lineare Interpolation und Zündzeitpunkt
   {
     const np = tovPts(DEF.tov, 'np');
-    const t1 = tovTime(np, 1.165), t2 = tovTime(np, 1.4), t3 = tovTime(np, 1.0);
-    const okT = t1.kind === 'at' && Math.abs(t1.t - Math.sqrt(10)) < 1e-6;
-    out.push({ ok: okT, txt: `Test 16: t*(T = 1,165) = ${fmtNum(t1.t, 3)} s (soll √10 s = 3,162 s)` });
-    out.push({ ok: t2.kind === 'before' && t3.kind === 'after', txt: `Test 16: Randfälle T = 1,4 → ${t2.kind}, T = 1,0 → ${t3.kind} (soll before/after)` });
-    const ta = tovAt(np, Math.sqrt(10));
-    out.push({ ok: Math.abs(ta - 1.165) < 1e-9, txt: `Test 16: T(√10 s) = ${fmtNum(ta, 4)} (soll 1,1650)` });
+        // Segment 1 s (1,20) … 3 s (1,16): T = 1,18 liegt bei log t = 0,5·log 3  →  t* = √3 s
+    const t1 = tovTime(np, 1.18), t2 = tovTime(np, 1.4), t3 = tovTime(np, 0.95), t4 = tovTime(np, 1.0);
+    const okT = t1.kind === 'at' && Math.abs(t1.t - Math.sqrt(3)) < 1e-6;
+    out.push({ ok: okT, txt: `Test 16: t*(T = 1,18) = ${fmtNum(t1.t, 3)} s (soll √3 s = 1,732 s)` });
+    out.push({ ok: t2.kind === 'before' && t3.kind === 'after', txt: `Test 16: Randfälle T = 1,4 → ${t2.kind}, T = 0,95 → ${t3.kind} (soll before/after)` });
+    out.push({ ok: t4.kind === 'at' && Math.abs(t4.t - Math.sqrt(3000 * 10000)) < 1e-6,
+      txt: `Test 16: t*(T = 1,00) = ${fmtNum(t4.t, 0)} s (soll ≈ 5477 s, Kennlinie bis 10000 s)` });
+    const ta = tovAt(np, Math.sqrt(3));
+    out.push({ ok: Math.abs(ta - 1.18) < 1e-9, txt: `Test 16: T(√3 s) = ${fmtNum(ta, 4)} (soll 1,1800)` });
   }
   let pass = 0;
   for (const o of out) { log(`${o.ok ? 'PASS' : 'FAIL'}  ${o.txt}`); if (o.ok) pass++; }
@@ -1297,7 +1300,7 @@ function renderAnalysis() {
   // ---- Diagramm: x log t, y Spannung in kV
   const W = 720, H = 360, L = 58, R = 24, Tp = 18, B = 44;
   const all = curves.np.concat(curves.pd);
-  let t0 = Math.min(...all.map(q => q.t), 0.1), t1 = Math.max(...all.map(q => q.t), 1000, tv.tS || 0);
+  let t0 = Math.min(...all.map(q => q.t), 0.1), t1 = Math.max(...all.map(q => q.t), 10000, tv.tS || 0);
   const d0 = Math.floor(Math.log10(t0)), d1 = Math.ceil(Math.log10(t1));
   const yVals = all.map(q => q.T * Ur).concat([U, tv.Uc]).filter(Number.isFinite);
   let y0 = Math.min(...yVals), y1 = Math.max(...yVals);
@@ -1446,7 +1449,7 @@ function buildForm() {
   $('grpRF').innerHTML = realRow('RF', '<i>R</i><sub>F</sub>', 'Ω', 0, 500, 0.5, 'mag');
   $('tovIn').innerHTML = realRow('tov.Ur', '<i>U</i><sub>r</sub>', 'kV', 10, 150, 0.5, 'mag') +
     realRow('tov.Uc', '<i>U</i><sub>c</sub>', 'kV', 10, 150, 0.5, 'mag') +
-    realRow('tov.tS', '<i>t</i><sub>S</sub>', 's', 0, 100, 0.1, 'mag') +
+    realRow('tov.tS', '<i>t</i><sub>S</sub>', 's', 0, 600, 0.5, 'mag') +
     `<div class="info"><i>U</i><sub>r</sub> Bemessungsspannung, <i>U</i><sub>c</sub> Dauerspannung,
       <i>t</i><sub>S</sub> Abschaltzeit des Schutzes (Fehlerklärung).</div>`;
   $('tovPts').innerHTML = DEF.tov.t.map((_, i) =>
