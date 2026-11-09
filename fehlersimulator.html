@@ -58,6 +58,22 @@ tr.sel td{box-shadow:inset 0 2px 0 var(--sel),inset 0 -2px 0 var(--sel);color:va
 .lvpanel{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
 .lvsvg{flex:1 1 320px;max-width:440px;min-width:0}
 .lvopts{flex:1 1 220px;min-width:0}
+.ana{display:grid;grid-template-columns:minmax(280px,1fr) minmax(0,2fr);gap:14px;align-items:start}
+@media (max-width:900px){ .ana{grid-template-columns:1fr} }
+.tovtab{width:auto;font-size:12.5px;margin-top:6px}
+.tovtab td,.tovtab th{padding:2px 4px}
+.tovtab input.num{width:64px}
+.chartwrap{position:relative}
+#tovSvg .grid{stroke:#e3e6ec;stroke-width:1}
+#tovSvg .ax{stroke:#9aa5bb;stroke-width:1}
+#tovSvg text{fill:var(--muted);font-size:11px}
+#tovSvg text.lab{fill:var(--ink);font-size:11.5px;stroke:var(--paper);stroke-width:3px;paint-order:stroke}
+.tip{position:absolute;pointer-events:none;background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 8px;
+  font-size:12px;color:var(--ink);box-shadow:0 2px 8px rgba(27,47,95,.15);white-space:nowrap;display:none}
+.verdict{margin-top:8px;padding:8px 10px;border-radius:6px;font-size:13px;border:1px solid var(--line);background:#fff}
+.verdict.bad{border-color:var(--bad);background:#fff0f4}
+.verdict.ok{border-color:#2b8a3e;background:#f0faf2}
+.verdict b{color:var(--ink)}
 .lvopts .opts label{white-space:normal;align-items:flex-start}
 .lvopts .opts label span{white-space:nowrap}
 .lvopts .opts .sw{flex:none;margin-top:8px}
@@ -213,6 +229,44 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
           <label><input type="checkbox" data-path="brk"> Unterbrechung</label>
           <label><input type="checkbox" data-path="ef"> Erdschluss</label>
         </div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Sonderanalysen</h2>
+    <div class="line">Analyse
+      <select data-path="ana">
+        <option value="none">keine</option>
+        <option value="tov">Ableiter: zeitweilige Überspannung (TOV) gegen Überlastkennlinie – Zündzeitpunkt</option>
+      </select></div>
+    <div id="anaTov" class="ana">
+      <div>
+        <div id="tovIn"></div>
+        <div class="line">Kennlinie für Bewertung
+          <select data-path="tov.curve">
+            <option value="np">ohne Vorbelastung</option>
+            <option value="pd">mit Vorbelastung (Energie vorab eingeprägt)</option>
+          </select></div>
+        <table class="tovtab">
+          <thead><tr><th><i>t</i> in s</th><th><i>T</i> ohne Vorbel.</th><th><i>T</i> mit Vorbel.</th></tr></thead>
+          <tbody id="tovPts"></tbody>
+        </table>
+        <div class="info"><i>T</i> = <i>U</i><sub>TOV</sub> / <i>U</i><sub>r</sub>: TOV-Festigkeit des Ableiters über der Dauer
+          (Kennlinienform nach IEC 60099-4/-5). Die Werte sind <b>typische Beispielwerte</b> –
+          für eine belastbare Aussage die Herstellerkurve des eingesetzten Ableiters eintragen.</div>
+        <div class="btns" style="margin-top:8px">
+          <button id="btnTovDef">Beispielkurve zurücksetzen</button>
+          <button id="btnTovIgn" title="Ableiter-Modus Z → 0 setzen">Zustand nach Zündung anzeigen</button>
+        </div>
+      </div>
+      <div>
+        <div class="chartwrap">
+          <svg id="tovSvg" viewBox="0 0 720 360" role="img" aria-label="TOV-Kennlinie des Ableiters und anliegende Überspannung"></svg>
+          <div class="tip" id="tovTip"></div>
+        </div>
+        <div class="opts" id="tovLeg"></div>
+        <div class="verdict" id="tovRes"></div>
+      </div>
     </div>
   </section>
 
@@ -495,8 +549,49 @@ const DEF = {
   scen: 'ok', phase: 3, loc: 'net', RF: 0, brk: false, ef: false,
   ideal: true,
   dC: [0, 0, 0],
-  coup: 'none', Z0W: { m: 30, a: 80 }, UMV: 20, ULV: 400
+  coup: 'none', Z0W: { m: 30, a: 80 }, UMV: 20, ULV: 400,
+  ana: 'tov',
+  // TOV-Festigkeit T = U/U_r über der Zeit (typische Beispielwerte, durch Herstellerdaten ersetzen)
+  tov: { Ur: 84, Uc: 67, tS: 3, curve: 'np',
+    t: [0.1, 1, 10, 100, 1000],
+    np: [1.30, 1.20, 1.13, 1.07, 1.03],
+    pd: [1.22, 1.13, 1.07, 1.02, 0.98] }
 };
+
+/** TOV-Kennlinie: Punkte nach t sortiert, gültige Werte (t > 0, T > 0) */
+function tovPts(tov, which) {
+  return tov.t.map((t, i) => ({ t, T: tov[which][i] }))
+    .filter(q => q.t > 0 && q.T > 0).sort((a, b) => a.t - b.t);
+}
+/** T(t) bei log-linearer Interpolation; außerhalb des Bereichs null */
+function tovAt(pts, t) {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (t >= a.t && t <= b.t) {
+      const x = (Math.log10(t) - Math.log10(a.t)) / (Math.log10(b.t) - Math.log10(a.t));
+      return a.T + x * (b.T - a.T);
+    }
+  }
+  return null;
+}
+/**
+ * Zeitpunkt, ab dem die Spannung U (als T = U/U_r) die Kennlinie überschreitet:
+ * { kind: 'before' } T über erstem Punkt (Überlastung praktisch sofort),
+ * { kind: 'after' }  T unter letztem Punkt (innerhalb des Kennlinienbereichs keine Überlastung),
+ * { kind: 'at', t }  Schnittpunkt.
+ */
+function tovTime(pts, T) {
+  if (pts.length < 2) return { kind: 'none' };
+  if (T >= pts[0].T) return { kind: 'before', t: pts[0].t };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (T <= a.T && T > b.T) {
+      const lt = Math.log10(a.t) + (a.T - T) / (a.T - b.T) * (Math.log10(b.t) - Math.log10(a.t));
+      return { kind: 'at', t: Math.pow(10, lt) };
+    }
+  }
+  return { kind: 'after', t: pts[pts.length - 1].t };
+}
 const clone = o => JSON.parse(JSON.stringify(o));
 
 /* =====================================================================
@@ -658,6 +753,16 @@ function selfTest(log = console.log) {
   p = clone(dbl); p.gnd = 'iso'; r = compute(p).v;
   chk(15, 'UM (S.2, frei)', r.UM, P(95.26, 60));
   chk(15, 'UW1 (S.2, frei)', r.UW1, P(55, -30));
+  // Test 16: TOV-Kennlinie – log-lineare Interpolation und Zündzeitpunkt
+  {
+    const np = tovPts(DEF.tov, 'np');
+    const t1 = tovTime(np, 1.165), t2 = tovTime(np, 1.4), t3 = tovTime(np, 1.0);
+    const okT = t1.kind === 'at' && Math.abs(t1.t - Math.sqrt(10)) < 1e-6;
+    out.push({ ok: okT, txt: `Test 16: t*(T = 1,165) = ${fmtNum(t1.t, 3)} s (soll √10 s = 3,162 s)` });
+    out.push({ ok: t2.kind === 'before' && t3.kind === 'after', txt: `Test 16: Randfälle T = 1,4 → ${t2.kind}, T = 1,0 → ${t3.kind} (soll before/after)` });
+    const ta = tovAt(np, Math.sqrt(10));
+    out.push({ ok: Math.abs(ta - 1.165) < 1e-9, txt: `Test 16: T(√10 s) = ${fmtNum(ta, 4)} (soll 1,1650)` });
+  }
   let pass = 0;
   for (const o of out) { log(`${o.ok ? 'PASS' : 'FAIL'}  ${o.txt}`); if (o.ok) pass++; }
   log(`Selbsttest: ${pass}/${out.length} bestanden`);
@@ -1118,6 +1223,7 @@ function update() {
   renderPhasorsLV(res, ref);
   renderTable(res, ref, chg);
   updateInfo(res);
+  renderAnalysis();
 }
 
 function updateInfo(res) {
@@ -1168,6 +1274,145 @@ function updateInfo(res) {
   $('arrInfo').innerHTML = t;
 }
 
+/* =====================================================================
+   Sonderanalyse: TOV am Ableiter gegen Überlastkennlinie
+   ===================================================================== */
+const TOVC = { np: 'var(--cUG)', pd: 'var(--cUL)', U: 'var(--cUM)', S: 'var(--muted)' };
+let tovGeo = null;
+
+/** Spannung am Ableiter vor dem Ansprechen: U_M mit Ableiter Z → ∞ im aktuellen Fehlerfall */
+function tovVoltage() {
+  const p = clone(state); p.arr.mode = 'inf';
+  return compute(p).v.UM.abs();
+}
+const fmtT = t => t >= 100 ? fmtNum(t, 0) : t >= 10 ? fmtNum(t, 1) : t >= 1 ? fmtNum(t, 2) : fmtNum(t, 3);
+
+function renderAnalysis() {
+  $('anaTov').hidden = state.ana !== 'tov';
+  if (state.ana !== 'tov') return;
+  const tv = state.tov, U = tovVoltage(), Ur = tv.Ur > 0 ? tv.Ur : NaN, Tist = U / Ur;
+  const curves = { np: tovPts(tv, 'np'), pd: tovPts(tv, 'pd') };
+  const hit = { np: tovTime(curves.np, Tist), pd: tovTime(curves.pd, Tist) };
+
+  // ---- Diagramm: x log t, y Spannung in kV
+  const W = 720, H = 360, L = 58, R = 24, Tp = 18, B = 44;
+  const all = curves.np.concat(curves.pd);
+  let t0 = Math.min(...all.map(q => q.t), 0.1), t1 = Math.max(...all.map(q => q.t), 1000, tv.tS || 0);
+  const d0 = Math.floor(Math.log10(t0)), d1 = Math.ceil(Math.log10(t1));
+  const yVals = all.map(q => q.T * Ur).concat([U, tv.Uc]).filter(Number.isFinite);
+  let y0 = Math.min(...yVals), y1 = Math.max(...yVals);
+  const pad = (y1 - y0) * 0.12 || 5; y0 -= pad; y1 += pad;
+  const raw = (y1 - y0) / 6, pw = Math.pow(10, Math.floor(Math.log10(raw))), st = ([1, 2, 2.5, 5, 10].find(n => raw / pw <= n) || 10) * pw;
+  y0 = Math.floor(y0 / st) * st; y1 = Math.ceil(y1 / st) * st;
+  const X = t => L + (Math.log10(t) - d0) / (d1 - d0) * (W - L - R);
+  const Y = u => Tp + (y1 - u) / (y1 - y0) * (H - Tp - B);
+  tovGeo = { X, Y, d0, d1, L, R, W, H, Tp, B, curves, Ur, U };
+  const s = [];
+  for (let u = y0; u <= y1 + 1e-9; u += st) {
+    s.push(`<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(u)}" y2="${Y(u)}"/>`,
+      `<text x="${L - 6}" y="${Y(u) + 4}" text-anchor="end">${fmtNum(u, st < 1 ? 1 : 0)}</text>`);
+  }
+  for (let d = d0; d <= d1; d++) {
+    const x = X(Math.pow(10, d));
+    s.push(`<line class="grid" x1="${x}" x2="${x}" y1="${Tp}" y2="${H - B}"/>`,
+      `<text x="${x}" y="${H - B + 16}" text-anchor="middle">${String(Math.pow(10, d)).replace('.', ',')}</text>`);
+  }
+  s.push(`<line class="ax" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>`,
+    `<text x="${(L + W - R) / 2}" y="${H - 8}" text-anchor="middle">Dauer t in s (logarithmisch)</text>`,
+    `<text x="14" y="${(Tp + H - B) / 2}" text-anchor="middle" transform="rotate(-90 14 ${(Tp + H - B) / 2})">Spannung in kV</text>`);
+  // Dauerspannung U_c
+  if (tv.Uc > 0 && tv.Uc >= y0 && tv.Uc <= y1)
+    s.push(`<line x1="${L}" x2="${W - R}" y1="${Y(tv.Uc)}" y2="${Y(tv.Uc)}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 4"/>`,
+      `<text class="lab" x="${W - R - 4}" y="${Y(tv.Uc) - 5}" text-anchor="end">U<tspan dy="3" font-size=".75em">c</tspan><tspan dy="-3"> = ${fmtNum(tv.Uc, 1)} kV</tspan></text>`);
+  // Kennlinien
+  for (const k of ['np', 'pd']) {
+    const c = curves[k]; if (c.length < 2) continue;
+    const act = tv.curve === k;
+    s.push(`<polyline fill="none" stroke="${TOVC[k]}" stroke-width="${act ? 2.5 : 1.5}" ${act ? '' : 'stroke-dasharray="6 4"'} stroke-linejoin="round" ` +
+      `points="${c.map(q => X(q.t) + ',' + Y(q.T * Ur)).join(' ')}"/>`);
+    c.forEach(q => s.push(`<circle cx="${X(q.t)}" cy="${Y(q.T * Ur)}" r="3" fill="${TOVC[k]}" stroke="var(--paper)" stroke-width="1.5"/>`));
+    const e = c[c.length - 1];
+    s.push(`<text class="lab" x="${X(e.t) - 4}" y="${Y(e.T * Ur) + (k === 'np' ? -8 : 16)}" text-anchor="end">${k === 'np' ? 'ohne Vorbelastung' : 'mit Vorbelastung'}</text>`);
+  }
+  // anliegende Überspannung U_M
+  if (Number.isFinite(U)) {
+    s.push(`<line x1="${L}" x2="${W - R}" y1="${Y(U)}" y2="${Y(U)}" stroke="rgba(255,221,0,.55)" stroke-width="8"/>`,
+      `<line x1="${L}" x2="${W - R}" y1="${Y(U)}" y2="${Y(U)}" stroke="${TOVC.U}" stroke-width="2"/>`,
+      `<text class="lab" x="${W - R - 4}" y="${Y(U) - 8}" text-anchor="end">U<tspan dy="3" font-size=".75em">M</tspan><tspan dy="-3"> = ${fmtNum(U, 1)} kV (T = ${fmtNum(Tist, 3)})</tspan></text>`);
+  }
+  // Abschaltzeit
+  if (tv.tS > 0) {
+    const x = X(Math.min(Math.max(tv.tS, Math.pow(10, d0)), Math.pow(10, d1)));
+    s.push(`<line x1="${x}" x2="${x}" y1="${Tp}" y2="${H - B}" stroke="${TOVC.S}" stroke-width="1.5" stroke-dasharray="5 4"/>`,
+      `<text class="lab" x="${x + 5}" y="${Tp + 12}">t<tspan dy="3" font-size=".75em">S</tspan><tspan dy="-3"> = ${fmtT(tv.tS)} s</tspan></text>`);
+  }
+  // Zündzeitpunkte
+  for (const k of ['np', 'pd']) {
+    const h = hit[k]; if (h.kind !== 'at') continue;
+    const act = tv.curve === k;
+    s.push(`<circle cx="${X(h.t)}" cy="${Y(U)}" r="${act ? 6 : 4.5}" fill="${act ? 'var(--bad)' : 'var(--paper)'}" stroke="${act ? 'var(--paper)' : 'var(--bad)'}" stroke-width="2"/>`);
+    if (act) s.push(`<line x1="${X(h.t)}" x2="${X(h.t)}" y1="${Y(U) + 7}" y2="${H - B}" stroke="var(--bad)" stroke-width="1" stroke-dasharray="2 3"/>`,
+      `<text class="lab" x="${X(h.t)}" y="${Y(U) + 22}" text-anchor="middle">t* = ${fmtT(h.t)} s</text>`);
+  }
+  s.push(`<line id="tovCross" x1="0" x2="0" y1="${Tp}" y2="${H - B}" stroke="var(--ink)" stroke-width="1" opacity="0"/>`,
+    `<rect id="tovHit" x="${L}" y="${Tp}" width="${W - L - R}" height="${H - Tp - B}" fill="transparent"/>`);
+  $('tovSvg').innerHTML = s.join('');
+
+  $('tovLeg').innerHTML =
+    `<span><span class="sw" style="background:${TOVC.np}"></span> TOV-Festigkeit ohne Vorbelastung</span>` +
+    `<span><span class="sw" style="background:${TOVC.pd}"></span> TOV-Festigkeit mit Vorbelastung</span>` +
+    `<span><span class="sw" style="background:${TOVC.U}"></span> ${htmlS('U', 'M')} am Ableiter (vor Ansprechen)</span>` +
+    `<span><span class="sw" style="background:var(--bad);width:8px;height:8px;border-radius:50%"></span> Überlastung / Zündung t*</span>`;
+
+  // ---- Bewertung
+  const h = hit[tv.curve], name = tv.curve === 'np' ? 'ohne Vorbelastung' : 'mit Vorbelastung';
+  let cls = 'ok', txt;
+  const base = `Anliegende zeitweilige Überspannung ${htmlS('U', 'M')} = <b>${fmtNum(U, 2)} kV</b> ` +
+    `(${fmtNum(Tist, 3)} · <i>U</i><sub>r</sub>, ${fmtNum(U / tv.Uc, 2)} · <i>U</i><sub>c</sub>), Kennlinie ${name}.<br>`;
+  if (!Number.isFinite(U) || !(Ur > 0)) txt = 'Bitte gültige Werte eingeben.';
+  else if (U < 0.05) txt = 'Am Sternpunkt liegt keine Spannung an – keine Beanspruchung des Ableiters.';
+  else if (U <= tv.Uc) txt = `<b>Dauerhaft zulässig:</b> ${htmlS('U', 'M')} ≤ <i>U</i><sub>c</sub> – der Ableiter zündet nicht.`;
+  else if (h.kind === 'before') { cls = 'bad'; txt = `<b>Zündung praktisch sofort</b> (t* &lt; ${fmtT(h.t)} s): Spannung liegt über dem ersten Kennlinienpunkt.`; }
+  else if (h.kind === 'after') txt = `<b>Keine Überlastung innerhalb ${fmtT(h.t)} s</b> (Ende der Kennlinie). ${htmlS('U', 'M')} liegt aber über <i>U</i><sub>c</sub> – für längere Dauer Herstellerangaben prüfen.`;
+  else if (h.kind === 'at') {
+    if (tv.tS > 0 && tv.tS < h.t) txt = `Überlastung ab <b>t* = ${fmtT(h.t)} s</b>. Der Schutz schaltet nach <i>t</i><sub>S</sub> = ${fmtT(tv.tS)} s ab – <b>der Ableiter übersteht die Beanspruchung</b> (Reserve ${fmtT(h.t - tv.tS)} s).`;
+    else { cls = 'bad'; txt = `<b>Zündzeitpunkt t* = ${fmtT(h.t)} s</b>: Ab hier ist die TOV-Festigkeit überschritten, der Ableiter wird thermisch überlastet und leitet dauerhaft (Zustand Z → 0)` +
+      (tv.tS > 0 ? ` – vor der Abschaltung nach <i>t</i><sub>S</sub> = ${fmtT(tv.tS)} s.` : '.'); }
+  } else txt = 'Kennlinie unvollständig (mind. zwei gültige Punkte).';
+  const o = tv.curve === 'np' ? 'pd' : 'np', ho = hit[o];
+  if (U > tv.Uc && ho.kind === 'at') txt += `<br><span style="color:var(--muted)">Zum Vergleich ${o === 'np' ? 'ohne' : 'mit'} Vorbelastung: t* = ${fmtT(ho.t)} s.</span>`;
+  if (cls === 'bad') {
+    const p = clone(state); p.arr.mode = 'zero';
+    const v = compute(p).v;
+    txt += `<br>Nach der Zündung: ${htmlS('U', 'M')} = 0, ${htmlS('I', 'A')} = <b>${fmtPh(v.IA, 'A', 0, 0.5)}</b>, ` +
+      `${htmlS('U', 'W1')} = <b>${fmtPh(v.UW1)}</b>, ${htmlS('U', 'W2')} = <b>${fmtPh(v.UW2)}</b>, ${htmlS('U', 'W3')} = <b>${fmtPh(v.UW3)}</b>.`;
+  }
+  $('tovRes').className = 'verdict ' + cls;
+  $('tovRes').innerHTML = base + txt;
+}
+
+/** Fadenkreuz mit Tooltip über dem TOV-Diagramm */
+function setupTovHover() {
+  const svg = $('tovSvg'), tip = $('tovTip');
+  const hide = () => { tip.style.display = 'none'; const c = $('tovCross'); if (c) c.setAttribute('opacity', 0); };
+  svg.addEventListener('mouseleave', hide);
+  svg.addEventListener('mousemove', e => {
+    const g = tovGeo; if (!g) return;
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const q = pt.matrixTransform(svg.getScreenCTM().inverse());
+    if (q.x < g.L || q.x > g.W - g.R) { hide(); return; }
+    const t = Math.pow(10, g.d0 + (q.x - g.L) / (g.W - g.L - g.R) * (g.d1 - g.d0));
+    const c = $('tovCross'); c.setAttribute('x1', q.x); c.setAttribute('x2', q.x); c.setAttribute('opacity', 0.35);
+    const fmtC = k => { const T = tovAt(g.curves[k], t); return T == null ? '—' : `${fmtNum(T * g.Ur, 1)} kV (T = ${fmtNum(T, 3)})`; };
+    tip.innerHTML = `<b>t = ${fmtT(t)} s</b><br>ohne Vorbelastung: ${fmtC('np')}<br>mit Vorbelastung: ${fmtC('pd')}<br>U<sub>M</sub> = ${fmtNum(g.U, 1)} kV`;
+    tip.style.display = 'block';
+    const r = svg.getBoundingClientRect(), wrap = svg.parentNode.getBoundingClientRect();
+    let x = e.clientX - wrap.left + 14;
+    if (x + tip.offsetWidth > r.width) x = e.clientX - wrap.left - tip.offsetWidth - 14;
+    tip.style.left = x + 'px'; tip.style.top = (e.clientY - wrap.top + 12) + 'px';
+  });
+}
+
 /* ---------- Eingabezeilen erzeugen ---------- */
 function cplxRow(path, sym, unit, max, step) {
   return `<div class="row"><label>${sym}</label><input class="num" data-path="${path}.m" data-kind="mag" inputmode="decimal" aria-label="Betrag">` +
@@ -1199,6 +1444,15 @@ function buildForm() {
   $('arrFree').innerHTML = cplxRow('arr', htmlS('Z', 'A'), 'Ω', 5000, 1).replaceAll('"arr.m"', '"arr.zm"').replace('"arr.a"', '"arr.za"');
   $('arrRes').innerHTML = realRow('arr.ures', '<i>U</i><sub>res</sub>', 'kV', 0, 120, 0.1, 'mag') + realRow('arr.ares', 'φ<sub>A</sub>', '°', -90, 90, 1, 'ang');
   $('grpRF').innerHTML = realRow('RF', '<i>R</i><sub>F</sub>', 'Ω', 0, 500, 0.5, 'mag');
+  $('tovIn').innerHTML = realRow('tov.Ur', '<i>U</i><sub>r</sub>', 'kV', 10, 150, 0.5, 'mag') +
+    realRow('tov.Uc', '<i>U</i><sub>c</sub>', 'kV', 10, 150, 0.5, 'mag') +
+    realRow('tov.tS', '<i>t</i><sub>S</sub>', 's', 0, 100, 0.1, 'mag') +
+    `<div class="info"><i>U</i><sub>r</sub> Bemessungsspannung, <i>U</i><sub>c</sub> Dauerspannung,
+      <i>t</i><sub>S</sub> Abschaltzeit des Schutzes (Fehlerklärung).</div>`;
+  $('tovPts').innerHTML = DEF.tov.t.map((_, i) =>
+    `<tr><td><input class="num" data-path="tov.t.${i}" data-kind="mag" inputmode="decimal"></td>` +
+    `<td><input class="num" data-path="tov.np.${i}" data-kind="mag" inputmode="decimal"></td>` +
+    `<td><input class="num" data-path="tov.pd.${i}" data-kind="mag" inputmode="decimal"></td></tr>`).join('');
 }
 
 /* ---------- Pfadzugriff auf den Zustand ---------- */
@@ -1284,6 +1538,12 @@ function init() {
     syncInputs(); update();
   };
   $('btnS2').onclick = () => fall('inf');
+  $('btnTovDef').onclick = () => {
+    state.tov = Object.assign(clone(DEF.tov), { Ur: state.tov.Ur, Uc: state.tov.Uc, tS: state.tov.tS, curve: state.tov.curve });
+    syncInputs(); update();
+  };
+  $('btnTovIgn').onclick = () => { state.arr.mode = 'zero'; syncInputs(); update(); };
+  setupTovHover();
   $('btnS3').onclick = () => fall('zero');
 
   update();
