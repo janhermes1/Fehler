@@ -794,12 +794,6 @@ function renderSchematic(res, chg) {
         txt(320, y + 25, svgS('Z', String(k), ' = ' + fmtZq(p.Z[k - 1])), 'sm', 'middle'));
       s.push(w(`M345 ${y}H690`));
     }
-    // Erdkapazität
-    if (p.CE) {
-      s.push(dot(470, y, true), w(`M470 ${y}V${y + 13}M461 ${y + 13}H479M461 ${y + 19}H479M470 ${y + 19}V${y + 30}` +
-        `M462 ${y + 30}H478M465 ${y + 34}H475M468 ${y + 38}H472`),
-        txt(483, y + 23, `C<tspan dy="3" font-size="0.75em">E</tspan>`, 'sm'));
-    }
     // Knoten am Mast und Leiter-Erde-Spannung
     s.push(dot(xa, y));
     s.push(sArrow(xa, y + 5, xa, YE - 3, 'U' + k), vl('U' + k, xa + 7, 366 + 28 * (k - 1)));
