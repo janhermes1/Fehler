@@ -173,6 +173,7 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
       <div class="card"><h3>Sternpunktbehandlung</h3>
         <div class="line">Erdung
           <select data-path="gnd">
+            <option value="iso">frei – isoliert (Kompensation in anderem Netzbereich)</option>
             <option value="comp">kompensiert (Petersenspule)</option>
             <option value="low">niederohmig geerdet (Z_E)</option>
             <option value="solid">starr geerdet</option>
@@ -261,6 +262,7 @@ const C0 = new Complex(0, 0), ONE = new Complex(1, 0);
    ===================================================================== */
 const OMEGA = 2 * Math.PI * 50;   // Kreisfrequenz bei 50 Hz
 const ZERO_Z = 1e-6;              // Ersatzimpedanz für Z → 0 in Ω
+const ISO_Z = 1e9;                // Ersatzimpedanz für freien Sternpunkt (Isolationswiderstand) in Ω
 const GLEAK = 1e-12;              // Ableitung jedes Knotens nach Erde in S
 
 function gaussSolve(A, b) {
@@ -342,9 +344,11 @@ function zOf(q) { return q.m <= 0 ? new Complex(ZERO_Z, 0) : Complex.polar(q.m, 
 
 /**
  * Impedanz Sternpunkt N – Erde je nach Sternpunktbehandlung:
- * 'comp' kompensiert (Petersenspule Z_P), 'low' niederohmig (Z_E), 'solid' starr (→ 0)
+ * 'iso' frei (isoliert, nur Isolationswiderstand), 'comp' kompensiert (Petersenspule Z_P),
+ * 'low' niederohmig (Z_E), 'solid' starr (→ 0)
  */
 function zStar(p) {
+  if (p.gnd === 'iso') return new Complex(ISO_Z, 0);
   if (p.gnd === 'low') return zOf(p.ZE);
   if (p.gnd === 'solid') return new Complex(ZERO_Z, 0);
   return zOf(p.ZP);
@@ -393,7 +397,7 @@ function buildNetwork(p, zA) {
     const Y = [0, 1, 2].map(a => [0, 1, 2].map(c => (a === c ? yk[a].add(yx) : yx)));
     el.push({ type: 'YM', nodes: ['T1', 'T2', 'T3'], ref: 'M', Y, name: 'ZW' });
   }
-  Z('N', 'E', zStar(p), 'ZP');                  // Sternpunkterdung (Petersenspule / Z_E / starr)
+  Z('N', 'E', zStar(p), 'ZP');                  // Sternpunkterdung (frei / Petersenspule / Z_E / starr)
   if (zA) Z('M', 'E', zA, 'ZA');                // Überspannungsableiter
   if (p.ef) {                                    // Erdschluss über R_F
     const at = (p.loc === 'net' ? 'A' : 'T') + p.phase;
@@ -482,7 +486,7 @@ const DEF = {
   Z: [{ m: 12.5, a: 73 }, { m: 12.5, a: 73 }, { m: 12.5, a: 73 }],
   ZW: [{ m: 300, a: 25 }, { m: 300, a: 25 }, { m: 300, a: 25 }],
   ZP: { m: 600, a: 87 }, v: 5, CE: true,
-  gnd: 'comp', ZE: { m: 40, a: 0 },
+  gnd: 'iso', ZE: { m: 40, a: 0 },
   arr: { mode: 'inf', zm: 1000, za: 0, ures: 50, ares: 0 },
   scen: 'ok', phase: 3, loc: 'net', RF: 0, brk: false, ef: false,
   ideal: true,
@@ -576,7 +580,7 @@ function selfTest(log = console.log) {
   chk(5, 'UM (vereinfacht)', r.UM, P(95.26, 60));
   // Test 6: Verlagerungsspannung durch kapazitive Unsymmetrie (fehlerfrei, starre Quellen)
   //   U_N = −Σ jωC_k·U_Gk / (Y_P + Σ jωC_k)
-  p = clone(DEF); p.dC = [10, 0, 0];
+  p = clone(DEF); p.dC = [10, 0, 0]; p.gnd = 'comp';
   r = compute(p).v;
   {
     const ce = calcCE(p);
@@ -588,7 +592,7 @@ function selfTest(log = console.log) {
     chk(6, 'UN (ΔC_E1 = +10 %)', r.UN, num.neg().div(den));
   }
   // Test 7: kompensierter Erdschluss über R_F – Reststrom klein, U3 nahe 0
-  p = clone(dbl); p.ideal = true; p.RF = 200;
+  p = clone(dbl); p.ideal = true; p.RF = 200; p.gnd = 'comp';
   r = compute(p).v;
   chk(7, 'IF = −(IP + ΣIC) (Kirchhoff)', r.IF, (() => {
     const ce = calcCE(p); let ic = C0;
@@ -635,6 +639,19 @@ function selfTest(log = console.log) {
   chk(13, 'UMS1 + UMS2 + UMS3 (Nullsystem MS)', r.UMS1.add(r.UMS2).add(r.UMS3), P(190.53 * 20 / 110, 60));
   chk(13, 'UNS1 + UNS2 + UNS3 (Nullsystem NS)', r.UNS1.add(r.UNS2).add(r.UNS3), C0, 'V');
   chk(13, 'UNS3 = ü·UMS23', r.UNS3, r.UMS23.scale(400 / Math.sqrt(3) / 20), 'V');
+  // Test 14: freier Sternpunkt (isoliert), satter Erdschluss Phase 3 ohne Unterbrechung:
+  //   U_N = −U_G3, kein Sternpunktstrom, I_F = reiner kapazitiver Erdschlussstrom 3ωC_E·U_Strang
+  p = clone(base); Object.assign(p, { gnd: 'iso', ef: true, phase: 3, loc: 'net', RF: 0 });
+  r = compute(p).v;
+  chk(14, 'UN (frei)', r.UN, UG(3).neg());
+  chk(14, 'INE (frei)', r.IP, C0, 'A');
+  chk(14, '|IF| = 3ωC_E·U_G', new Complex(r.IF.abs(), 0), new Complex(3 * OMEGA * calcCE(p) * 63.51e3, 0), 'A');
+  // Zählpfeil Leiter → Erde: I_F = −ΣjωC_E·U_k = +j·3ωC_E·U_G3  →  eilt U_G3 um 90° vor
+  chk(14, 'IF eilt U_G3 um 90° vor', r.IF.div(UG(3)).scale(1 / r.IF.abs() * 63.51), Complex.polar(1, 90), 'A');
+  // Test 15: freier Sternpunkt reproduziert Fall S.2
+  p = clone(dbl); p.gnd = 'iso'; r = compute(p).v;
+  chk(15, 'UM (S.2, frei)', r.UM, P(95.26, 60));
+  chk(15, 'UW1 (S.2, frei)', r.UW1, P(55, -30));
   let pass = 0;
   for (const o of out) { log(`${o.ok ? 'PASS' : 'FAIL'}  ${o.txt}`); if (o.ok) pass++; }
   log(`Selbsttest: ${pass}/${out.length} bestanden`);
@@ -730,7 +747,12 @@ function renderSchematic(res, chg) {
   // Sternpunkt N und Sternpunkterdung
   s.push(w('M50 150V310'), dot(50, 230, true), txt(40, 234, 'N', '', 'end'));
   const iTxt = txt(70, 429, svgK('IP', ' = ' + fmtPh(v.IP, 'A', 1, 0.05)), 'sm');
-  if (p.gnd === 'low') {
+  if (p.gnd === 'iso') {
+    // freier Sternpunkt: keine Verbindung N – E
+    s.push(`<path class="w" style="stroke-width:1;stroke-dasharray:3 3" d="M50 310V330"/>`);
+    s.push(txt(70, 380, 'Sternpunkt frei (isoliert)'), txt(70, 397, 'Kompensation in anderem', 'sm'),
+      txt(70, 413, 'Netzbereich', 'sm'));
+  } else if (p.gnd === 'low') {
     // niederohmig: Erdungsimpedanz Z_E
     s.push(w('M50 310V374'), `<rect class="zb" x="41" y="374" width="18" height="44"/>`, w(`M50 418V${YE}`));
     s.push(txt(70, 396, 'Erdungsimpedanz ' + svgS('Z', 'E')), txt(70, 413, fmtZq(p.ZE), 'sm'), iTxt);
@@ -1099,7 +1121,9 @@ function updateInfo(res) {
   $('ceInfo').innerHTML = `<i>C</i><sub>E</sub> = <b>${fmtNum(ce * 1e6, 3)} µF</b> je Leiter` +
     ` (3ω<i>C</i><sub>E</sub> = ${fmtNum(3 * OMEGA * ce * 1e3, 3)} mS)` +
     (state.CE ? '' : ' – abgeschaltet') +
-    (g === 'comp' ? '' : '<br>Petersenspule nicht angeschlossen; <span class="u">Z</span><sub>P</sub> und <i>v</i> legen nur <i>C</i><sub>E</sub> (Netzausdehnung) fest.') +
+    (g === 'iso' ? '<br>Generator-Sternpunkt frei: Dieser Netzbereich ist unkompensiert, die Kompensation liegt in einem anderen Netzbereich. ' +
+      '<span class="u">Z</span><sub>P</sub> und <i>v</i> legen nur <i>C</i><sub>E</sub> (Netzausdehnung) fest.'
+      : g === 'comp' ? '' : '<br>Petersenspule nicht angeschlossen; <span class="u">Z</span><sub>P</sub> und <i>v</i> legen nur <i>C</i><sub>E</sub> (Netzausdehnung) fest.') +
     `<br>${htmlK('UN')} = <b>${fmtPh(res.v.UN, 'kV', 2)}</b> · ${htmlK('IP')} = <b>${fmtPh(res.v.IP, 'A', 1, 0.05)}</b>` +
     (state.ef ? ` · ${htmlK('IF')} = <b>${fmtPh(res.v.IF, 'A', 1, 0.05)}</b>` : '');
   // im vereinfachten Modell sind Leitungs-, Netzimpedanz und Erdkapazitäten ausgeblendet
@@ -1247,7 +1271,7 @@ function init() {
   const fall = mode => {
     Object.assign(state, { scen: 'double', brk: true, ef: true, phase: 3, loc: 'net', RF: 0 });
     state.ideal = true;   // Bedingungen der Musterlösung
-    state.gnd = 'comp';
+    state.gnd = 'iso';    // Generator-Sternpunkt frei
     state.arr.mode = mode;
     syncInputs(); update();
   };
