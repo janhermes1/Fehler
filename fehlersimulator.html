@@ -167,7 +167,16 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
       <div class="card"><h3>Netzimpedanz (alle Phasen)</h3><div id="grpZN"></div>
         <div class="info">0 Ω bedeutet <span class="u">Z</span><sub>N</sub> → 0 (Ersatzwert 10⁻⁶ Ω).</div></div>
       <div class="card"><h3>Transformator (Wicklungen)</h3><div id="grpZW"></div></div>
-      <div class="card"><h3>Kompensation</h3><div id="grpZP"></div>
+      <div class="card"><h3>Sternpunktbehandlung</h3>
+        <div class="line">Erdung
+          <select data-path="gnd">
+            <option value="comp">kompensiert (Petersenspule)</option>
+            <option value="low">niederohmig geerdet (Z_E)</option>
+            <option value="solid">starr geerdet</option>
+          </select></div>
+        <div id="zeRow"></div>
+        <div class="warn" id="gndMsg"></div>
+        <div id="grpZP"></div>
         <div class="line"><label><input type="checkbox" data-path="CE"> Erdkapazitäten <i>C</i><sub>E</sub> berücksichtigen</label></div>
         <div class="info" id="ceInfo"></div></div>
       <div class="card"><h3>Überspannungsableiter</h3>
@@ -328,7 +337,18 @@ function solveMNA(net) {
 /** Impedanz aus {m, a}; Betrag 0 → Ersatzimpedanz 1e-6 Ω */
 function zOf(q) { return q.m <= 0 ? new Complex(ZERO_Z, 0) : Complex.polar(q.m, q.a); }
 
-/** Leiter-Erde-Kapazität C_E in F aus Petersenspule und Verstimmung */
+/**
+ * Impedanz Sternpunkt N – Erde je nach Sternpunktbehandlung:
+ * 'comp' kompensiert (Petersenspule Z_P), 'low' niederohmig (Z_E), 'solid' starr (→ 0)
+ */
+function zStar(p) {
+  if (p.gnd === 'low') return zOf(p.ZE);
+  if (p.gnd === 'solid') return new Complex(ZERO_Z, 0);
+  return zOf(p.ZP);
+}
+
+/** Leiter-Erde-Kapazität C_E in F aus Petersenspule und Verstimmung
+ *  (Bemessung der Netzausdehnung – gilt unabhängig von der Sternpunktbehandlung) */
 function calcCE(p) {
   const XP = Math.abs(p.ZP.m * Math.sin(p.ZP.a * Math.PI / 180));
   const f = 1 + p.v / 100;
@@ -370,7 +390,7 @@ function buildNetwork(p, zA) {
     const Y = [0, 1, 2].map(a => [0, 1, 2].map(c => (a === c ? yk[a].add(yx) : yx)));
     el.push({ type: 'YM', nodes: ['T1', 'T2', 'T3'], ref: 'M', Y, name: 'ZW' });
   }
-  Z('N', 'E', zOf(p.ZP), 'ZP');                 // Petersenspule
+  Z('N', 'E', zStar(p), 'ZP');                  // Sternpunkterdung (Petersenspule / Z_E / starr)
   if (zA) Z('M', 'E', zA, 'ZA');                // Überspannungsableiter
   if (p.ef) {                                    // Erdschluss über R_F
     const at = (p.loc === 'net' ? 'A' : 'T') + p.phase;
@@ -426,7 +446,7 @@ function compute(p) {
   v.UM = V.M;
   v.UN = V.N;
   v.IA = zA ? V.M.div(zA).scale(1000) : C0;   // kV/Ω = kA → A
-  v.IP = V.N.div(zOf(p.ZP)).scale(1000);       // Spulenstrom N → E
+  v.IP = V.N.div(zStar(p)).scale(1000);        // Sternpunktstrom N → E (Spulenstrom bei Kompensation)
   // Fehlerstrom (Reststrom) an der Fehlerstelle nach Erde
   v.IF = p.ef ? V[(p.loc === 'net' ? 'A' : 'T') + p.phase].div(new Complex(p.RF > 0 ? p.RF : ZERO_Z, 0)).scale(1000) : C0;
   // Unterspannungsseite (Abschätzung): proportional zu den Wicklungsspannungen,
@@ -448,6 +468,7 @@ const DEF = {
   Z: [{ m: 12.5, a: 73 }, { m: 12.5, a: 73 }, { m: 12.5, a: 73 }],
   ZW: [{ m: 300, a: 25 }, { m: 300, a: 25 }, { m: 300, a: 25 }],
   ZP: { m: 600, a: 87 }, v: 5, CE: true,
+  gnd: 'comp', ZE: { m: 40, a: 0 },
   arr: { mode: 'inf', zm: 1000, za: 0, ures: 50, ares: 0 },
   scen: 'ok', phase: 3, loc: 'net', RF: 0, brk: false, ef: false,
   ideal: true,
@@ -573,6 +594,21 @@ function selfTest(log = console.log) {
   chk(9, 'UW1 (gekoppelt)', r.UW1, P(55, -30));
   chk(9, 'UW3 (gekoppelt)', r.UW3, C0);
   chk(9, 'UM (gekoppelt)', r.UM, P(95.26, 60));
+  // Test 10: starr geerdet, Erdschluss Phase 3 über R_F = 10 Ω (ohne Unterbrechung):
+  //   kein Sternpunktversatz, gesunde Leiter unverändert, I_F = U_G3 / R_F
+  p = clone(base); Object.assign(p, { gnd: 'solid', ef: true, phase: 3, loc: 'net', RF: 10, CE: false });
+  r = compute(p).v;
+  chk(10, 'UN (starr)', r.UN, C0);
+  chk(10, 'U1 (starr)', r.U1, UG(1));
+  chk(10, 'U2 (starr)', r.U2, UG(2));
+  chk(10, 'IF = UG3/RF', r.IF, UG(3).scale(1000 / 10), 'A');
+  // Test 11: niederohmig über Z_E = 40 Ω, satter Erdschluss Phase 3:
+  //   U_N = −U_G3, I_P = U_N/Z_E, I_F = −I_P (ohne C_E)
+  p = clone(base); Object.assign(p, { gnd: 'low', ZE: { m: 40, a: 0 }, ef: true, phase: 3, loc: 'net', RF: 0, CE: false });
+  r = compute(p).v;
+  chk(11, 'UN (niederohmig)', r.UN, UG(3).neg());
+  chk(11, 'INE = UN/ZE', r.IP, UG(3).neg().scale(1000 / 40), 'A');
+  chk(11, 'IF = −INE', r.IF, r.IP.neg(), 'A');
   let pass = 0;
   for (const o of out) { log(`${o.ok ? 'PASS' : 'FAIL'}  ${o.txt}`); if (o.ok) pass++; }
   log(`Selbsttest: ${pass}/${out.length} bestanden`);
@@ -664,12 +700,23 @@ function renderSchematic(res, chg) {
   s.push(`<path class="w" style="stroke-width:3" d="M28 ${YE}H1306"/>`, `<path class="w" style="stroke-width:1.2" d="${hatch}"/>`,
     txt(30, YE + 32, 'Erde E', 'sm'));
 
-  // Sternpunkt N und Petersenspule
+  // Sternpunkt N und Sternpunkterdung
   s.push(w('M50 150V310'), dot(50, 230, true), txt(40, 234, 'N', '', 'end'));
-  s.push(w('M50 310V370'), w('M50 370a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16'), w(`M50 434V${YE}`));
-  s.push(txt(70, 396, 'Petersenspule ' + svgS('Z', 'P')), txt(70, 413, fmtZq(p.ZP), 'sm'),
-    txt(70, 429, svgK('IP', ' = ' + fmtPh(v.IP, 'A', 1, 0.05)), 'sm'));
-  // Verlagerungsspannung U_N = Spannung an der Petersenspule (Pfeil N → E)
+  const iTxt = txt(70, 429, svgK('IP', ' = ' + fmtPh(v.IP, 'A', 1, 0.05)), 'sm');
+  if (p.gnd === 'low') {
+    // niederohmig: Erdungsimpedanz Z_E
+    s.push(w('M50 310V374'), `<rect class="zb" x="41" y="374" width="18" height="44"/>`, w(`M50 418V${YE}`));
+    s.push(txt(70, 396, 'Erdungsimpedanz ' + svgS('Z', 'E')), txt(70, 413, fmtZq(p.ZE), 'sm'), iTxt);
+  } else if (p.gnd === 'solid') {
+    // starr: direkte Verbindung N – E
+    s.push(w(`M50 310V${YE}`), dot(50, YE, false));
+    s.push(txt(70, 396, 'starr geerdet'), txt(70, 413, svgS('Z', 'NE', ' → 0'), 'sm'), iTxt);
+  } else {
+    // kompensiert: Petersenspule Z_P
+    s.push(w('M50 310V370'), w('M50 370a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16'), w(`M50 434V${YE}`));
+    s.push(txt(70, 396, 'Petersenspule ' + svgS('Z', 'P')), txt(70, 413, fmtZq(p.ZP), 'sm'), iTxt);
+  }
+  // Verlagerungsspannung U_N = Spannung an der Sternpunkterdung (Pfeil N → E)
   s.push(`<path class="w" style="stroke-width:1;stroke-dasharray:3 3" d="M50 330H210"/>`,
     sArrow(210, 332, 210, YE - 3, 'UN'), vl('UN', 218, 470));
 
@@ -989,6 +1036,8 @@ function renderTable(res, ref, chg) {
    Gesamtaktualisierung
    ===================================================================== */
 function update() {
+  // Symbol des Sternpunktstroms: Spulenstrom I_P bzw. Erdungsstrom I_NE
+  SYM.IP = state.gnd === 'comp' ? ['I', 'P'] : ['I', 'NE'];
   let res, ref;
   try {
     res = compute(state);
@@ -1006,10 +1055,15 @@ function update() {
 }
 
 function updateInfo(res) {
-  const ce = res.ce;
+  const ce = res.ce, g = state.gnd;
+  $('zeRow').hidden = g !== 'low';
+  $('gndMsg').textContent = g !== 'comp' && state.ef && state.ideal && state.RF <= 0 && (g === 'solid' || state.ZE.m <= 0)
+    ? 'Starre Quellen und satte Erdung: Der Erdkurzschlussstrom ist im vereinfachten Modell nicht begrenzt (R_F > 0 wählen oder vereinfachtes Modell ausschalten).'
+    : '';
   $('ceInfo').innerHTML = `<i>C</i><sub>E</sub> = <b>${fmtNum(ce * 1e6, 3)} µF</b> je Leiter` +
     ` (3ω<i>C</i><sub>E</sub> = ${fmtNum(3 * OMEGA * ce * 1e3, 3)} mS)` +
     (state.CE ? '' : ' – abgeschaltet') +
+    (g === 'comp' ? '' : '<br>Petersenspule nicht angeschlossen; <span class="u">Z</span><sub>P</sub> und <i>v</i> legen nur <i>C</i><sub>E</sub> (Netzausdehnung) fest.') +
     `<br>${htmlK('UN')} = <b>${fmtPh(res.v.UN, 'kV', 2)}</b> · ${htmlK('IP')} = <b>${fmtPh(res.v.IP, 'A', 1, 0.05)}</b>` +
     (state.ef ? ` · ${htmlK('IF')} = <b>${fmtPh(res.v.IF, 'A', 1, 0.05)}</b>` : '');
   // im vereinfachten Modell sind Leitungs-, Netzimpedanz und Erdkapazitäten ausgeblendet
@@ -1063,6 +1117,7 @@ function buildForm() {
     realRow('ULV', '<i>U</i><sub>NS</sub>', 'V', 100, 1000, 10, 'mag') +
     `<div class="info"><span class="u">Z</span><sub>0W</sub>: Nullimpedanz des Wicklungssatzes (≈ Streuimpedanz der Dreieckswicklung).
       <i>U</i><sub>NS</sub>: Nennspannung der Niederspannung; die NS-Spannungen sind proportional zu den Wicklungsspannungen abgeschätzt.</div>`;
+  $('zeRow').innerHTML = cplxRow('ZE', htmlS('Z', 'E'), 'Ω', 200, 0.5);
   $('grpZP').innerHTML = cplxRow('ZP', htmlS('Z', 'P'), 'Ω', 3000, 1) + realRow('v', '<i>v</i>', '%', -50, 50, 0.5, 'v') +
     [0, 1, 2].map(i => realRow(`dC.${i}`, `Δ<i>C</i><sub>E${i + 1}</sub>`, '%', -30, 30, 0.5, 'v')).join('');
   $('arrFree').innerHTML = cplxRow('arr', htmlS('Z', 'A'), 'Ω', 5000, 1).replaceAll('"arr.m"', '"arr.zm"').replace('"arr.a"', '"arr.za"');
@@ -1148,6 +1203,7 @@ function init() {
   const fall = mode => {
     Object.assign(state, { scen: 'double', brk: true, ef: true, phase: 3, loc: 'net', RF: 0 });
     state.ideal = true;   // Bedingungen der Musterlösung
+    state.gnd = 'comp';
     state.arr.mode = mode;
     syncInputs(); update();
   };
