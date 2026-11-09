@@ -104,24 +104,27 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
 <body>
 <header>
   <h1>110-kV-Drehstromsystem – Spannungen bei Leiterunterbrechung und Erdschluss</h1>
-  <p>Kompensiertes Netz · Modifizierte Knotenpunktanalyse mit komplexen Effektivwertzeigern · 50 Hz</p>
+  <p>Wählbare Sternpunktbehandlung · Transformatoren HS/MS Yy0, MS/NS Dyn5 · Modifizierte Knotenpunktanalyse mit komplexen Effektivwertzeigern · 50 Hz</p>
 </header>
 <main>
   <section class="top">
     <div class="leftcol">
       <div class="panel">
         <h2>Schaltbild</h2>
-        <svg id="sch" viewBox="0 0 1320 560" role="img" aria-label="Schaltbild"></svg>
+        <svg id="sch" viewBox="0 0 1470 560" role="img" aria-label="Schaltbild"></svg>
       </div>
       <div class="panel lvpanel">
         <div class="lvsvg">
-          <h2>Zeigerdiagramm Niederspannung (Abschätzung)</h2>
-          <svg id="phlv" class="phd" viewBox="0 0 540 540" role="img" aria-label="Zeigerdiagramm Niederspannung"></svg>
+          <h2 id="lvHead">Zeigerdiagramm Niederspannung</h2>
+          <svg id="phlv" class="phd" viewBox="0 0 540 540" role="img" aria-label="Zeigerdiagramm Unterspannungsseite"></svg>
         </div>
         <div class="lvopts">
           <div class="opts" style="flex-direction:column;align-items:flex-start">
-            <label><input type="checkbox" id="lv-S" checked><span class="sw" style="background:var(--cU)"></span>Strangspannungen <span><span class="u">U</span><sub>NS1–3</sub></span> (Leiter–N)</label>
-            <label><input type="checkbox" id="lv-L" checked><span class="sw" style="background:var(--cUL)"></span>Verkettete Spannungen <span><span class="u">U</span><sub>NS12</sub></span>, <span><span class="u">U</span><sub>NS23</sub></span>, <span><span class="u">U</span><sub>NS31</sub></span></label>
+            <label>Ebene <select id="lv-lvl">
+              <option value="NS">Niederspannung (nach Dyn5)</option>
+              <option value="MS">Mittelspannung (nach Yy0)</option></select></label>
+            <label><input type="checkbox" id="lv-S" checked><span class="sw" style="background:var(--cU)"></span>Strangspannungen <span id="lvSymS"></span></label>
+            <label><input type="checkbox" id="lv-L" checked><span class="sw" style="background:var(--cUL)"></span>Verkettete Spannungen <span id="lvSymL"></span></label>
             <label><input type="checkbox" id="lv-tri">Verkettete als Dreieck zwischen den Spitzen</label>
             <label><input type="checkbox" id="lv-cons">Konstruktionslinien</label>
             <label><input type="checkbox" id="lv-ref" checked>Referenz fehlerfrei</label>
@@ -166,7 +169,7 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
       <div class="card"><h3>Leitungsimpedanzen</h3><div id="grpZ"></div></div>
       <div class="card"><h3>Netzimpedanz (alle Phasen)</h3><div id="grpZN"></div>
         <div class="info">0 Ω bedeutet <span class="u">Z</span><sub>N</sub> → 0 (Ersatzwert 10⁻⁶ Ω).</div></div>
-      <div class="card"><h3>Transformator (Wicklungen)</h3><div id="grpZW"></div></div>
+      <div class="card"><h3>Transformatoren HS/MS (Yy0) · MS/NS (Dyn5)</h3><div id="grpZW"></div></div>
       <div class="card"><h3>Sternpunktbehandlung</h3>
         <div class="line">Erdung
           <select data-path="gnd">
@@ -449,10 +452,21 @@ function compute(p) {
   v.IP = V.N.div(zStar(p)).scale(1000);        // Sternpunktstrom N → E (Spulenstrom bei Kompensation)
   // Fehlerstrom (Reststrom) an der Fehlerstelle nach Erde
   v.IF = p.ef ? V[(p.loc === 'net' ? 'A' : 'T') + p.phase].div(new Complex(p.RF > 0 ? p.RF : ZERO_Z, 0)).scale(1000) : C0;
-  // Unterspannungsseite (Abschätzung): proportional zu den Wicklungsspannungen,
-  // 110 kV/√3 an der Wicklung ↦ U_NS/√3, Phasendrehung der Schaltgruppen vernachlässigt
-  const kNS = p.ULV / 110;   // kV → V
-  for (let k = 1; k <= 3; k++) v['UNS' + k] = v['UW' + k].scale(kNS);
+  // Transformator HS/MS, Schaltgruppe Yy0: MS-Strangspannung (gegen MS-Sternpunkt)
+  // proportional zur HS-Wicklungsspannung, keine Phasendrehung, Nullsystem wird übertragen
+  const uMV = Math.max(p.UMV, 1e-6);
+  const kMS = uMV / 110;                    // kV → kV
+  for (let k = 1; k <= 3; k++) v['UMS' + k] = v['UW' + k].scale(kMS);
+  v.UMS12 = v.UMS1.sub(v.UMS2);
+  v.UMS23 = v.UMS2.sub(v.UMS3);
+  v.UMS31 = v.UMS3.sub(v.UMS1);
+  // Transformator MS/NS, Schaltgruppe Dyn5: Dreieckswicklung liegt an den verketteten
+  // MS-Spannungen (Nullsystem gesperrt), NS-Strang k auf demselben Schenkel wie die
+  // Dreieckswicklung zwischen MS-Leiter k−1 und k  →  U_NSk = ü·U_MS(k−1)k, Drehung 5·30° = 150°
+  const kNS = (p.ULV / Math.sqrt(3)) / uMV; // kV (verkettet MS) → V (Strang NS)
+  v.UNS1 = v.UMS31.scale(kNS);
+  v.UNS2 = v.UMS12.scale(kNS);
+  v.UNS3 = v.UMS23.scale(kNS);
   v.UNS12 = v.UNS1.sub(v.UNS2);
   v.UNS23 = v.UNS2.sub(v.UNS3);
   v.UNS31 = v.UNS3.sub(v.UNS1);
@@ -473,7 +487,7 @@ const DEF = {
   scen: 'ok', phase: 3, loc: 'net', RF: 0, brk: false, ef: false,
   ideal: true,
   dC: [0, 0, 0],
-  coup: 'none', Z0W: { m: 30, a: 80 }, ULV: 400
+  coup: 'none', Z0W: { m: 30, a: 80 }, UMV: 20, ULV: 400
 };
 const clone = o => JSON.parse(JSON.stringify(o));
 
@@ -586,8 +600,8 @@ function selfTest(log = console.log) {
   r = compute(p).v;
   chk(8, 'UW1 (gekoppelt)', r.UW1, P(110, 30));
   chk(8, 'UW3 = −(UW1 + UW2)', r.UW3, P(190.53, -120));
-  chk(8, 'UNS23 (400-V-Netz)', r.UNS23, r.UW2.sub(r.UW3).scale(400 / 110), 'V');
-  chk(8, 'UNS23 ≈ 1,06 kV', r.UNS23, P(1058.3, 70.9), 'V');
+  chk(8, 'UMS1 (Yy0) = UW1·20/110', r.UMS1, r.UW1.scale(20 / 110));
+  chk(8, 'UNS2 (Dyn5) = ü·UMS12', r.UNS2, r.UMS12.scale(400 / Math.sqrt(3) / 20), 'V');
   // Test 9: gekoppelte Wicklungen, Fall S.2: freier Sternpunkt → kein Nullsystem, Ergebnis wie ungekoppelt
   p = clone(dbl); p.coup = 'core';
   r = compute(p).v;
@@ -609,6 +623,18 @@ function selfTest(log = console.log) {
   chk(11, 'UN (niederohmig)', r.UN, UG(3).neg());
   chk(11, 'INE = UN/ZE', r.IP, UG(3).neg().scale(1000 / 40), 'A');
   chk(11, 'IF = −INE', r.IF, r.IP.neg(), 'A');
+  // Test 12: fehlerfrei – Yy0 ohne Drehung, Dyn5 mit 150° Nacheilung
+  p = clone(base); r = compute(p).v;
+  chk(12, 'UMS1 (Yy0)', r.UMS1, P(20 / Math.sqrt(3), 0));
+  chk(12, 'UMS12', r.UMS12, P(20, -30));
+  chk(12, 'UNS1 (Dyn5)', r.UNS1, P(400 / Math.sqrt(3), -150), 'V');
+  chk(12, 'UNS2 (Dyn5)', r.UNS2, P(400 / Math.sqrt(3), 120 - 150), 'V');
+  chk(12, 'UNS12', r.UNS12, P(400, -180), 'V');
+  // Test 13: Fall S.3 ungekoppelt – MS enthält Nullsystem, NS nach Dy nicht mehr
+  p = clone(dbl); p.arr.mode = 'zero'; r = compute(p).v;
+  chk(13, 'UMS1 + UMS2 + UMS3 (Nullsystem MS)', r.UMS1.add(r.UMS2).add(r.UMS3), P(190.53 * 20 / 110, 60));
+  chk(13, 'UNS1 + UNS2 + UNS3 (Nullsystem NS)', r.UNS1.add(r.UNS2).add(r.UNS3), C0, 'V');
+  chk(13, 'UNS3 = ü·UMS23', r.UNS3, r.UMS23.scale(400 / Math.sqrt(3) / 20), 'V');
   let pass = 0;
   for (const o of out) { log(`${o.ok ? 'PASS' : 'FAIL'}  ${o.txt}`); if (o.ok) pass++; }
   log(`Selbsttest: ${pass}/${out.length} bestanden`);
@@ -627,9 +653,10 @@ const $ = id => document.getElementById(id);
 
 /* Symbole: [Basis, Index] */
 const SYM = { U12: ['U', '12'], U23: ['U', '23'], U31: ['U', '31'], UM: ['U', 'M'], UN: ['U', 'N'], IA: ['I', 'A'], IP: ['I', 'P'], IF: ['I', 'F'],
-  UNS12: ['U', 'NS12'], UNS23: ['U', 'NS23'], UNS31: ['U', 'NS31'] };
+  UNS12: ['U', 'NS12'], UNS23: ['U', 'NS23'], UNS31: ['U', 'NS31'],
+  UMS12: ['U', 'MS12'], UMS23: ['U', 'MS23'], UMS31: ['U', 'MS31'] };
 for (let k = 1; k <= 3; k++) {
-  SYM['UNS' + k] = ['U', 'NS' + k];
+  SYM['UNS' + k] = ['U', 'NS' + k]; SYM['UMS' + k] = ['U', 'MS' + k];
   SYM['UG' + k] = ['U', 'G' + k]; SYM['U' + k] = ['U', String(k)];
   SYM['UW' + k] = ['U', 'W' + k]; SYM['UT' + k] = ['U', 'T' + k];
 }
@@ -690,14 +717,14 @@ function renderSchematic(res, chg) {
   // Bereiche und Überschriften
   s.push('<rect class="region" x="16" y="60" width="268" height="476" rx="10"/>',
     '<rect class="region" x="372" y="60" width="300" height="476" rx="10"/>',
-    '<rect class="region" x="772" y="60" width="538" height="476" rx="10"/>');
+    '<rect class="region" x="772" y="60" width="684" height="476" rx="10"/>');
   s.push(txt(150, 50, 'Netz', 'hd', 'middle'), p.ideal ? '' : txt(330, 50, 'Leitung', 'hd2', 'middle'),
-    txt(522, 50, 'Mast 1', 'hd', 'middle'), txt(1041, 50, 'Transformator', 'hd', 'middle'));
+    txt(522, 50, 'Mast 1', 'hd', 'middle'), txt(1114, 50, 'Transformatoren', 'hd', 'middle'));
 
   // Erdlinie
   let hatch = '';
-  for (let x = 40; x <= 1302; x += 14) hatch += `M${x} ${YE + 3}L${x - 8} ${YE + 13}`;
-  s.push(`<path class="w" style="stroke-width:3" d="M28 ${YE}H1306"/>`, `<path class="w" style="stroke-width:1.2" d="${hatch}"/>`,
+  for (let x = 40; x <= 1452; x += 14) hatch += `M${x} ${YE + 3}L${x - 8} ${YE + 13}`;
+  s.push(`<path class="w" style="stroke-width:3" d="M28 ${YE}H1456"/>`, `<path class="w" style="stroke-width:1.2" d="${hatch}"/>`,
     txt(30, YE + 32, 'Erde E', 'sm'));
 
   // Sternpunkt N und Sternpunkterdung
@@ -757,9 +784,10 @@ function renderSchematic(res, chg) {
     s.push(w(`M730 ${y}H820`), dot(790, y), `<rect class="zb" x="820" y="${y - 10}" width="60" height="20"/>`, w(`M880 ${y}H960`));
     s.push(txt(850, y + 25, svgS('Z', 'W' + k, ' = ' + fmtZq(p.ZW[k - 1])), 'sm', 'middle'));
     s.push(sArrow(815, y - 20, 885, y - 20, 'UW' + k), vl('UW' + k, 850, y - 28, 'middle'));
-    // Unterspannungsseite (angedeutet)
-    s.push(`<rect class="zb dash" x="1032" y="${y - 9}" width="44" height="18"/>`, w(`M1076 ${y}H1182`), txt(1198, y + 4, '…', '', 'middle'),
-      vl('UNS' + k, 1034, y - 14));
+    // MS-Wicklung (Yy0), MS-Leitung zum MS/NS-Transformator, NS-Abgang
+    s.push(`<rect class="zb" x="1032" y="${y - 9}" width="44" height="18"/>`, w(`M1076 ${y}H1250`),
+      vl('UMS' + k, 1084, y - 8));
+    s.push(w(`M1290 ${y}H1430`), txt(1440, y + 4, '…', '', 'middle'), vl('UNS' + k, 1298, y - 8));
     // Erdschluss
     if (p.ef && p.phase === k) s.push(bolt(p.loc === 'net' ? 660 : 755, y));
   }
@@ -775,23 +803,26 @@ function renderSchematic(res, chg) {
   s.push(txt(938, 414, 'Ableiter', '', 'end'), txt(938, 431, svgS('Z', 'A', zaTxt), 'sm', 'end'));
   s.push(`<path class="w" style="stroke-width:1;stroke-dasharray:3 3" d="M964 350H1000"/>`);
   s.push(sArrow(1000, 352, 1000, YE - 3, 'UM', true), vl('UM', 1012, 470));
-  // Kern und Unterspannungsseite
-  s.push(w('M1012 136V324M1018 136V324'), txt(1150, 92, 'US-Seite (Abschätzung)', 'sm', 'middle'));
-  // verkettete Spannungen der Niederspannung (Pfeil von x nach y)
-  s.push(dot(1145, 150), dot(1145, 310), dot(1160, 150), dot(1160, 230), dot(1160, 310));
-  s.push(sArrow(1160, 154, 1160, 226, 'UNS12'), vl('UNS12', 1168, 194));
-  s.push(sArrow(1160, 234, 1160, 306, 'UNS23'), vl('UNS23', 1168, 274));
-  s.push(sArrow(1145, 306, 1145, 154, 'UNS31'), vl('UNS31', 1151, 117));
+  // Kern HS/MS (Yy0), MS-Sternpunkt, MS/NS-Transformator (Dyn5), NS-Neutralleiter
+  s.push(w('M1012 136V324M1018 136V324'),
+    txt(1015, 92, 'HS/MS', 'sm', 'middle'), txt(1015, 108, 'Yy0', '', 'middle'));
+  s.push(w('M1032 150V310'), dot(1032, 310, true), txt(1036, 330, 'MS-Sternpunkt', 'sm'));
+  s.push(txt(1165, 108, `MS ${fmtNum(p.UMV, 1)} kV`, 'sm', 'middle'));
+  s.push(`<rect class="zb" x="1250" y="132" width="40" height="196" rx="4"/>`,
+    txt(1270, 225, 'D', '', 'middle'), txt(1270, 245, 'yn', '', 'middle'),
+    txt(1270, 92, 'MS/NS', 'sm', 'middle'), txt(1270, 108, 'Dyn5', '', 'middle'));
+  s.push(txt(1365, 108, `NS ${fmtNum(p.ULV, 0)} V`, 'sm', 'middle'));
+  s.push(w('M1290 350H1430'), txt(1440, 354, 'N', '', 'middle'), txt(1300, 374, 'Nullsystem durch Δ gesperrt,', 'sm'), txt(1300, 390, 'NS eilt 150° nach', 'sm'));
   if (p.coup === 'core') {
     // Nullsystem-Pfad: Dreieckswicklung auf dem Kern mit Nullimpedanz Z_0W
     s.push(`<path class="w" style="stroke-width:1.2;stroke-dasharray:4 3" d="M1015 324V414H1214"/>`,
       w('M1240 380L1196 456H1222M1258 456H1284L1240 380'),
       `<rect class="zb" x="1222" y="449" width="36" height="14"/>`,
       txt(1240, 431, 'Δ', '', 'middle'),
-      txt(1240, 366, 'Kern gekoppelt – Nullsystem', 'sm', 'middle'),
+      txt(1240, 400, 'HS/MS-Kern gekoppelt – Ausgleichswicklung', 'sm', 'middle'),
       txt(1240, 482, svgS('Z', '0W', ' = ' + fmtZq(p.Z0W)), 'sm', 'middle'));
   } else {
-    s.push(txt(1170, 345, 'Wicklungen ungekoppelt', 'sm', 'middle'));
+    s.push(txt(1130, 400, 'HS-Wicklungen ungekoppelt', 'sm', 'middle'));
   }
 
   const svg = $('sch');
@@ -872,24 +903,28 @@ function renderPhasors(res, ref) {
 function renderPhasorsLV(res, ref) {
   const o = {};
   ['S', 'L', 'tri', 'cons', 'ref'].forEach(n => { o[n] = $('lv-' + n).checked; });
+  const lv = $('lv-lvl').value, X = 'U' + lv;   // 'UNS' oder 'UMS'
+  $('lvHead').textContent = lv === 'NS' ? 'Zeigerdiagramm Niederspannung (Dyn5)' : 'Zeigerdiagramm Mittelspannung (Yy0)';
+  $('lvSymS').innerHTML = `${htmlS('U', lv + '1–3')} (gegen ${lv === 'NS' ? 'N' : 'MS-Sternpunkt'})`;
+  $('lvSymL').innerHTML = PAIRS.map(([xy]) => htmlS('U', lv + xy)).join(', ');
   const groups = (r) => {
     const V = r.v, L = [];
     const add = (key, col, from) => L.push({ key, v: V[key], col, from: from || C0, w: 2 });
-    if (o.L) for (const [xy, , y] of PAIRS) add('UNS' + xy, COL.UL, o.tri ? V['UNS' + y] : C0);
-    if (o.S) for (let k = 1; k <= 3; k++) add('UNS' + k, COL.U);
+    if (o.L) for (const [xy, , y] of PAIRS) add(X + xy, COL.UL, o.tri ? V[X + y] : C0);
+    if (o.S) for (let k = 1; k <= 3; k++) add(X + k, COL.U);
     return L;
   };
   const items = groups(res), refItems = o.ref ? groups(ref) : [];
   const cons = [];
   if (o.cons && o.L) for (const [, x, y] of PAIRS) {
-    const tip = res.v['UNS' + x];
-    cons.push({ a: tip, b: tip.sub(res.v['UNS' + y]), col: COL.UL, op: 0.9 });
-    if (!o.tri) cons.push({ a: C0, b: res.v['UNS' + y].neg(), col: COL.UL, op: 0.35 });
+    const tip = res.v[X + x];
+    cons.push({ a: tip, b: tip.sub(res.v[X + y]), col: COL.UL, op: 0.9 });
+    if (!o.tri) cons.push({ a: C0, b: res.v[X + y].neg(), col: COL.UL, op: 0.35 });
   }
   drawPhasors($('phlv'), items, refItems, cons, {
-    unit: 'V',
-    order: ['UNS1', 'UNS2', 'UNS3', 'UNS12', 'UNS23', 'UNS31'],
-    mid: key => o.tri && /^UNS\d\d$/.test(key)
+    unit: lv === 'NS' ? 'V' : 'kV',
+    order: [1, 2, 3, 12, 23, 31].map(n => X + n),
+    mid: key => o.tri && new RegExp('^' + X + '\\d\\d$').test(key)
   });
 }
 
@@ -1015,6 +1050,7 @@ function drawPhasors(svg, items, refItems, cons, opt) {
    renderTable
    ===================================================================== */
 const ROWS = ['UG1', 'UG2', 'UG3', 'U1', 'U2', 'U3', 'U12', 'U23', 'U31', 'UW1', 'UW2', 'UW3', 'UM', 'UT1', 'UT2', 'UT3', 'UN', 'IP', 'IF', 'IA',
+  'UMS1', 'UMS2', 'UMS3', 'UMS12', 'UMS23', 'UMS31',
   'UNS1', 'UNS2', 'UNS3', 'UNS12', 'UNS23', 'UNS31'];
 function renderTable(res, ref, chg) {
   const h = [];
@@ -1071,13 +1107,18 @@ function updateInfo(res) {
   $('z0Row').hidden = state.coup !== 'core';
   // Kennwerte der Niederspannung
   {
-    const v = res.v, un = state.ULV, us = un / Math.sqrt(3);
-    const ms = Math.max(v.UNS1.abs(), v.UNS2.abs(), v.UNS3.abs());
-    const ml = Math.max(v.UNS12.abs(), v.UNS23.abs(), v.UNS31.abs());
-    $('lvInfo').innerHTML = `Größte Strangspannung: <b>${fmtNum(ms, 0)} V</b> (${fmtNum(100 * ms / us, 0)} % von ${fmtNum(us, 0)} V)<br>` +
-      `Größte verkettete Spannung: <b>${fmtNum(ml, 0)} V</b> (${fmtNum(100 * ml / un, 0)} % von ${fmtNum(un, 0)} V)<br>` +
-      `Transformator: ${state.coup === 'core' ? 'Wicklungen magnetisch gekoppelt' : 'Wicklungen ungekoppelt (wie Skizze)'}` +
-      `<br>Abschätzung proportional zu den Wicklungsspannungen; Phasendrehung der Schaltgruppen vernachlässigt.`;
+    const v = res.v, lv = $('lv-lvl').value, X = 'U' + lv;
+    const un = lv === 'NS' ? state.ULV : state.UMV, unit = lv === 'NS' ? 'V' : 'kV', d = lv === 'NS' ? 0 : 2;
+    const us = un / Math.sqrt(3);
+    const ms = Math.max(v[X + 1].abs(), v[X + 2].abs(), v[X + 3].abs());
+    const ml = Math.max(v[X + 12].abs(), v[X + 23].abs(), v[X + 31].abs());
+    const u0 = v[X + 1].add(v[X + 2]).add(v[X + 3]).scale(1 / 3);
+    $('lvInfo').innerHTML = `Größte Strangspannung: <b>${fmtNum(ms, d)} ${unit}</b> (${fmtNum(100 * ms / us, 0)} % von ${fmtNum(us, d)} ${unit})<br>` +
+      `Größte verkettete Spannung: <b>${fmtNum(ml, d)} ${unit}</b> (${fmtNum(100 * ml / un, 0)} % von ${fmtNum(un, d)} ${unit})<br>` +
+      `Nullsystem ${htmlS('U', '0')} = <b>${fmtPh(u0, unit, d, lv === 'NS' ? 0.5 : 0.005)}</b>` +
+      (lv === 'NS' ? ' (durch Dreieckswicklung gesperrt)' : ' (Yy0 überträgt das Nullsystem)') + '<br>' +
+      `HS/MS-Wicklungen: ${state.coup === 'core' ? 'magnetisch gekoppelt' : 'ungekoppelt (wie Skizze)'}` +
+      `<br>Ideale Übertragung (leerlaufend): Yy0 ohne Drehung, Dyn5 eilt 150° nach.`;
   }
   const m = state.arr.mode;
   $('arrFree').hidden = m !== 'free';
@@ -1112,11 +1153,14 @@ function buildForm() {
   $('grpZW').innerHTML = [0, 1, 2].map(i => cplxRow(`ZW.${i}`, htmlS('Z', 'W' + (i + 1)), 'Ω', 2000, 1)).join('') +
     `<div class="line">Kopplung <select data-path="coup">
       <option value="none">keine – unabhängige Wicklungen (wie Skizze)</option>
-      <option value="core">magnetisch gekoppelt (Dreischenkelkern / Dreieckswicklung)</option></select></div>` +
+      <option value="core">magnetisch gekoppelt (Dreischenkelkern / Ausgleichswicklung)</option></select></div>` +
     `<div id="z0Row">${cplxRow('Z0W', htmlS('Z', '0W'), 'Ω', 300, 1)}</div>` +
+    realRow('UMV', '<i>U</i><sub>MS</sub>', 'kV', 1, 60, 0.5, 'mag') +
     realRow('ULV', '<i>U</i><sub>NS</sub>', 'V', 100, 1000, 10, 'mag') +
-    `<div class="info"><span class="u">Z</span><sub>0W</sub>: Nullimpedanz des Wicklungssatzes (≈ Streuimpedanz der Dreieckswicklung).
-      <i>U</i><sub>NS</sub>: Nennspannung der Niederspannung; die NS-Spannungen sind proportional zu den Wicklungsspannungen abgeschätzt.</div>`;
+    `<div class="info"><span class="u">Z</span><sub>W1–3</sub>, Kopplung: HS-Wicklungen des Yy0-Transformators.
+      <span class="u">Z</span><sub>0W</sub>: Nullimpedanz des Wicklungssatzes (≈ Streuimpedanz der Ausgleichswicklung).
+      <i>U</i><sub>MS</sub>, <i>U</i><sub>NS</sub>: Nennspannungen (verkettet). MS-Strang = Yy0-Abbild der HS-Wicklungsspannung;
+      NS-Strang = Dyn5-Abbild der verketteten MS-Spannung (Nullsystem gesperrt, 150° Drehung).</div>`;
   $('zeRow').innerHTML = cplxRow('ZE', htmlS('Z', 'E'), 'Ω', 200, 0.5);
   $('grpZP').innerHTML = cplxRow('ZP', htmlS('Z', 'P'), 'Ω', 3000, 1) + realRow('v', '<i>v</i>', '%', -50, 50, 0.5, 'v') +
     [0, 1, 2].map(i => realRow(`dC.${i}`, `Δ<i>C</i><sub>E${i + 1}</sub>`, '%', -30, 30, 0.5, 'v')).join('');
