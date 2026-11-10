@@ -1024,6 +1024,13 @@ function renderSchematic(res, chg) {
   }
   s.push(txt(NS0 + 105, 108, `NS ${fmtNum(p.ULV, 0)} V`, 'sm', 'middle'));
   s.push(txt(NS0 + 210, 354, 'N', '', 'middle'), txt(NS0 + 10, 374, 'Nullsystem durch Δ gesperrt,', 'sm'), txt(NS0 + 10, 390, 'NS eilt 150° nach', 'sm'));
+  // NS-Sternpunkt N geerdet (Betriebserder): im Wicklungsbild direkt am Sternpunkt, im Blockbild am N-Leiter
+  {
+    const xe = det ? 1546 : NS0 + 180;
+    s.push(w(`M${xe} 350V${YE}`), dot(xe, 350, true), dot(xe, YE, true),
+      txt(det ? xe + 8 : xe - 8, YE - 30, 'N geerdet', 'sm', det ? 'start' : 'end'),
+      txt(det ? xe + 8 : xe - 8, YE - 15, '(Betriebserder)', 'sm', det ? 'start' : 'end'));
+  }
   if (det) s.push(txt(NS0 + 10, 410, 'Schenkel k: Δ-Wicklung D<tspan dy="3" font-size=".75em">k</tspan><tspan dy="-3"> ↔ NS-Strang k</tspan>', 'sm'));
   if (p.coup === 'core') {
     // Nullsystem-Pfad: Dreieckswicklung auf dem Kern mit Nullimpedanz Z_0W
