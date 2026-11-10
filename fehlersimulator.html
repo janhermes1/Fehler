@@ -915,7 +915,7 @@ function renderSchematic(res, chg) {
   } else if (p.gnd === 'low') {
     // niederohmig: Erdungsimpedanz Z_E
     s.push(w('M50 310V374'), `<rect class="zb" x="41" y="374" width="18" height="44"/>`, w(`M50 418V${YE}`));
-    s.push(txt(70, 396, 'Erdungsimpedanz ' + svgS('Z', 'E')), txt(70, 413, fmtZq(p.ZE), 'sm'), iTxt);
+    s.push(txt(70, 396, 'Erdungsimpedanz ' + svgS('Z', 'E')), iTxt);
   } else if (p.gnd === 'solid') {
     // starr: direkte Verbindung N – E
     s.push(w(`M50 310V${YE}`), dot(50, YE, false));
@@ -923,7 +923,7 @@ function renderSchematic(res, chg) {
   } else {
     // kompensiert: Petersenspule Z_P
     s.push(w('M50 310V370'), w('M50 370a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16a8 8 0 0 1 0 16'), w(`M50 434V${YE}`));
-    s.push(txt(70, 396, 'Petersenspule ' + svgS('Z', 'P')), txt(70, 413, fmtZq(p.ZP), 'sm'), iTxt);
+    s.push(txt(70, 396, 'Petersenspule ' + svgS('Z', 'P')), iTxt);
   }
   // Verlagerungsspannung U_N = Spannung an der Sternpunkterdung (Pfeil N → E)
   s.push(`<path class="w" style="stroke-width:1;stroke-dasharray:3 3" d="M50 330H210"/>`,
@@ -941,10 +941,10 @@ function renderSchematic(res, chg) {
     } else {
       // Netzimpedanz Z_N
       s.push(w(`M148 ${y}H193`), `<rect class="zb" x="193" y="${y - 9}" width="44" height="18"/>`,
-        txt(215, y - 14, svgS('Z', 'N', p.ZN.m <= 0 ? ' → 0' : ' = ' + fmtZq(p.ZN)), 'sm', 'middle'));
+        txt(215, y - 14, svgS('Z', 'N', p.ZN.m <= 0 ? ' → 0' : ''), 'sm', 'middle'));
       // Leitungsimpedanz Z_k
       s.push(w(`M237 ${y}H295`), `<rect class="zb" x="295" y="${y - 10}" width="50" height="20"/>`,
-        txt(320, y + 25, svgS('Z', String(k), ' = ' + fmtZq(p.Z[k - 1])), 'sm', 'middle'));
+        txt(320, y + 25, svgS('Z', String(k)), 'sm', 'middle'));
       s.push(w(`M345 ${y}H690`));
     }
     // Knoten am Mast und Leiter-Erde-Spannung
@@ -958,7 +958,7 @@ function renderSchematic(res, chg) {
     }
     // Trafoseite
     s.push(w(`M730 ${y}H820`), `<rect class="zb" x="820" y="${y - 10}" width="60" height="20"/>`, w(`M880 ${y}H960`));
-    s.push(txt(822, y + 25, svgS('Z', 'W' + k, ' = ' + fmtZq(p.ZW[k - 1])), 'sm'));
+    s.push(txt(822, y + 25, svgS('Z', 'W' + k), 'sm'));
     s.push(sArrow(818, y - 20, 885, y - 20, 'UW' + k), vl('UW' + k, 822, y - 28));
     // MS-Wicklung (Yy0), MS-Leitung zum MS/NS-Transformator, NS-Abgang
     // MS-Leitung: im Blockmodus bis zum Block, sonst bis zur jeweiligen Dreieckswicklung
@@ -986,7 +986,7 @@ function renderSchematic(res, chg) {
       const m = (y1 + y2) / 2;
       s.push(dot(x, y1), dot(x, y2), w(`M${x} ${y1}V${m - 24}M${x} ${m + 24}V${y2}`),
         `<rect class="zb" x="${x - 9}" y="${m - 24}" width="18" height="48"/>`,
-        txt(x + 14, m + 4, svgS('Z', 'D' + k, ' = ' + fmtZq(p.ZD[k - 1])), 'sm'));
+        txt(x + 14, m + 4, svgS('Z', 'D' + k), 'sm'));
     };
     vbox(1290, 150, 230, 2);
     vbox(1290, 230, 310, 3);
@@ -1001,7 +1001,8 @@ function renderSchematic(res, chg) {
   // Sternverbindung, M, Ableiter, U_M
   s.push(w('M960 150V392'), dot(960, 350, true), txt(970, 345, 'M'));
   s.push(`<rect class="zb" x="946" y="392" width="28" height="56"/>`, w(`M951 442L969 398M965 398h4v4`), w(`M960 448V${YE}`));
-  const zaTxt = p.arr.mode === 'zero' ? ' → 0' : res.zA ? (p.arr.mode === 'res' || p.arr.zm > 0 ? ' = ' + fmtZc(res.zA) : ' → 0') : ' → ∞';
+  // Impedanzwerte werden im Schaltbild nicht angezeigt, nur Grenzzustände (→ 0 / → ∞)
+  const zaTxt = p.arr.mode === 'zero' ? ' → 0' : res.zA ? (p.arr.mode === 'res' || p.arr.zm > 0 ? '' : ' → 0') : ' → ∞';
   s.push(txt(938, 414, 'Ableiter', '', 'end'), txt(938, 431, svgS('Z', 'A', zaTxt), 'sm', 'end'));
   s.push(`<path class="w" style="stroke-width:1;stroke-dasharray:3 3" d="M964 350H1000"/>`);
   s.push(sArrow(1000, 352, 1000, YE - 3, 'UM', true), vl('UM', 1012, 470));
@@ -1039,7 +1040,7 @@ function renderSchematic(res, chg) {
       `<rect class="zb" x="1222" y="449" width="36" height="14"/>`,
       txt(1240, 431, 'Δ', '', 'middle'),
       txt(1240, 400, 'HS/MS-Kern gekoppelt – Ausgleichswicklung', 'sm', 'middle'),
-      txt(1240, 482, svgS('Z', '0W', ' = ' + fmtZq(p.Z0W)), 'sm', 'middle'));
+      txt(1240, 482, svgS('Z', '0W'), 'sm', 'middle'));
   } else {
     s.push(txt(1130, 400, 'HS-Wicklungen ungekoppelt', 'sm', 'middle'));
   }
