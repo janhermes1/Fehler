@@ -132,6 +132,70 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
         </div>
         <svg id="sch" viewBox="0 0 1530 560" role="img" aria-label="Schaltbild"></svg>
       </div>
+      <div class="panel" id="inputs">
+        <h2>Eingaben</h2>
+        <div class="btns" style="margin-bottom:10px">
+          <button id="btnSym">Symmetrisch zurücksetzen</button>
+          <button id="btnDef">Alle Standardwerte</button>
+          <button id="btnS2" title="Schaltet zusätzlich das vereinfachte Modell ein">Fall S.2: Doppelfehler, Ableiter Z → ∞</button>
+          <button id="btnS3" title="Schaltet zusätzlich das vereinfachte Modell ein">Fall S.3: Doppelfehler, Ableiter Z → 0</button>
+        </div>
+        <div class="line" style="margin-bottom:10px">
+          <label><input type="checkbox" data-path="ideal"> <b>Vereinfachtes Modell wie Musterlösung</b>
+            (starre Quellen: <span class="u">Z</span><sub>N</sub>, <span class="u">Z</span><sub>1</sub>–<span class="u">Z</span><sub>3</sub> → 0)</label>
+          <span class="info" style="margin:0">Aus: Spannungsfälle durch Last-, Kapazitäts- und Spulenströme auf der Leitung werden berücksichtigt.</span>
+        </div>
+        <div class="cards">
+          <div class="card"><h3>Spannungsquellen</h3><div id="grpUG"></div></div>
+          <div class="card"><h3>Leitungsimpedanzen</h3><div id="grpZ"></div></div>
+          <div class="card"><h3>Netzimpedanz (alle Phasen)</h3><div id="grpZN"></div>
+            <div class="info">0 Ω bedeutet <span class="u">Z</span><sub>N</sub> → 0 (Ersatzwert 10⁻⁶ Ω).</div></div>
+          <div class="card"><h3>Transformatoren HS/MS (Yy0) · MS/NS (Dyn5)</h3><div id="grpZW"></div></div>
+          <div class="card"><h3>Sternpunktbehandlung</h3>
+            <div class="line">Erdung
+              <select data-path="gnd">
+                <option value="iso">frei – isoliert (Kompensation in anderem Netzbereich)</option>
+                <option value="comp">kompensiert (Petersenspule)</option>
+                <option value="low">niederohmig geerdet (Z_E)</option>
+                <option value="solid">starr geerdet</option>
+              </select></div>
+            <div id="zeRow"></div>
+            <div class="warn" id="gndMsg"></div>
+            <div id="grpZP"></div>
+            <div class="line"><label><input type="checkbox" data-path="CE"> Erdkapazitäten <i>C</i><sub>E</sub> berücksichtigen</label></div>
+            <div class="info" id="ceInfo"></div></div>
+          <div class="card"><h3>Überspannungsableiter</h3>
+            <div class="line">Modus
+              <select data-path="arr.mode">
+                <option value="inf">Z → ∞ (nicht angesprochen)</option>
+                <option value="zero">Z → 0 (gezündet)</option>
+                <option value="free">Impedanz frei</option>
+                <option value="res">Aus gemessener Restspannung</option>
+              </select></div>
+            <div id="arrFree"></div>
+            <div id="arrRes"></div>
+            <div class="warn" id="arrMsg"></div>
+            <div class="info" id="arrInfo"></div></div>
+          <div class="card"><h3>Fehler</h3>
+            <div class="line">Szenario
+              <select data-path="scen">
+                <option value="ok">Fehlerfrei (symmetrisch)</option>
+                <option value="double">Doppelfehler: Leiterunterbrechung + Erdschluss</option>
+              </select></div>
+            <div class="line">Phase
+              <select data-path="phase" data-num="1"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+              Erdschlussort
+              <select data-path="loc">
+                <option value="net">netzseitig der Unterbrechung (am Mast)</option>
+                <option value="trafo">trafoseitig</option>
+              </select></div>
+            <div id="grpRF"></div>
+            <div class="line">
+              <label><input type="checkbox" data-path="brk"> Unterbrechung</label>
+              <label><input type="checkbox" data-path="ef"> Erdschluss</label>
+            </div></div>
+        </div>
+      </div>
       <div class="panel lvpanel">
         <div class="lvsvg">
           <h2 id="lvHead">Zeigerdiagramm Niederspannung</h2>
@@ -167,71 +231,6 @@ svg.phd .vec .hit{stroke:transparent;stroke-width:12}
         <label><input type="checkbox" id="ph-tri">Verkettete als Dreieck zwischen den Spitzen von <span class="u">U</span><sub>1</sub>–<span class="u">U</span><sub>3</sub></label>
         <label><input type="checkbox" id="ph-ref" checked>Referenz fehlerfrei</label>
       </div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Eingaben</h2>
-    <div class="btns" style="margin-bottom:10px">
-      <button id="btnSym">Symmetrisch zurücksetzen</button>
-      <button id="btnDef">Alle Standardwerte</button>
-      <button id="btnS2" title="Schaltet zusätzlich das vereinfachte Modell ein">Fall S.2: Doppelfehler, Ableiter Z → ∞</button>
-      <button id="btnS3" title="Schaltet zusätzlich das vereinfachte Modell ein">Fall S.3: Doppelfehler, Ableiter Z → 0</button>
-    </div>
-    <div class="line" style="margin-bottom:10px">
-      <label><input type="checkbox" data-path="ideal"> <b>Vereinfachtes Modell wie Musterlösung</b>
-        (starre Quellen: <span class="u">Z</span><sub>N</sub>, <span class="u">Z</span><sub>1</sub>–<span class="u">Z</span><sub>3</sub> → 0)</label>
-      <span class="info" style="margin:0">Aus: Spannungsfälle durch Last-, Kapazitäts- und Spulenströme auf der Leitung werden berücksichtigt.</span>
-    </div>
-    <div class="cards">
-      <div class="card"><h3>Spannungsquellen</h3><div id="grpUG"></div></div>
-      <div class="card"><h3>Leitungsimpedanzen</h3><div id="grpZ"></div></div>
-      <div class="card"><h3>Netzimpedanz (alle Phasen)</h3><div id="grpZN"></div>
-        <div class="info">0 Ω bedeutet <span class="u">Z</span><sub>N</sub> → 0 (Ersatzwert 10⁻⁶ Ω).</div></div>
-      <div class="card"><h3>Transformatoren HS/MS (Yy0) · MS/NS (Dyn5)</h3><div id="grpZW"></div></div>
-      <div class="card"><h3>Sternpunktbehandlung</h3>
-        <div class="line">Erdung
-          <select data-path="gnd">
-            <option value="iso">frei – isoliert (Kompensation in anderem Netzbereich)</option>
-            <option value="comp">kompensiert (Petersenspule)</option>
-            <option value="low">niederohmig geerdet (Z_E)</option>
-            <option value="solid">starr geerdet</option>
-          </select></div>
-        <div id="zeRow"></div>
-        <div class="warn" id="gndMsg"></div>
-        <div id="grpZP"></div>
-        <div class="line"><label><input type="checkbox" data-path="CE"> Erdkapazitäten <i>C</i><sub>E</sub> berücksichtigen</label></div>
-        <div class="info" id="ceInfo"></div></div>
-      <div class="card"><h3>Überspannungsableiter</h3>
-        <div class="line">Modus
-          <select data-path="arr.mode">
-            <option value="inf">Z → ∞ (nicht angesprochen)</option>
-            <option value="zero">Z → 0 (gezündet)</option>
-            <option value="free">Impedanz frei</option>
-            <option value="res">Aus gemessener Restspannung</option>
-          </select></div>
-        <div id="arrFree"></div>
-        <div id="arrRes"></div>
-        <div class="warn" id="arrMsg"></div>
-        <div class="info" id="arrInfo"></div></div>
-      <div class="card"><h3>Fehler</h3>
-        <div class="line">Szenario
-          <select data-path="scen">
-            <option value="ok">Fehlerfrei (symmetrisch)</option>
-            <option value="double">Doppelfehler: Leiterunterbrechung + Erdschluss</option>
-          </select></div>
-        <div class="line">Phase
-          <select data-path="phase" data-num="1"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
-          Erdschlussort
-          <select data-path="loc">
-            <option value="net">netzseitig der Unterbrechung (am Mast)</option>
-            <option value="trafo">trafoseitig</option>
-          </select></div>
-        <div id="grpRF"></div>
-        <div class="line">
-          <label><input type="checkbox" data-path="brk"> Unterbrechung</label>
-          <label><input type="checkbox" data-path="ef"> Erdschluss</label>
-        </div></div>
     </div>
   </section>
 
